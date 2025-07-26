@@ -602,29 +602,6 @@ class AdminService:
             'status_code': 200
         }
     
-    def get_featured_cars(self, page=1, limit=10):
-        """Get featured car listings for admin"""
-        # Get featured cars with pagination
-        cars, total = self.car_repository.get_cars(
-            page=page,
-            limit=limit,
-            filters={'is_featured': True}
-        )
-        
-        # Calculate pagination info
-        total_pages = (total + limit - 1) // limit
-        
-        return {
-            'cars': cars,
-            'pagination': {
-                'page': page,
-                'limit': limit,
-                'total': total,
-                'total_pages': total_pages
-            },
-            'status_code': 200
-        }
-    
     def feature_car(self, car_id):
         """Feature a car listing"""
         # Check if car exists
@@ -797,8 +774,25 @@ class AdminService:
 
     def reset_admin_password(self, email, otp, new_password):
         record = self.admin_repository.get_admin_otp(email, otp)
-        if not record or record['expires_at'] < datetime.now() or not record['verified']:
-            return {"success": False, "message": "Invalid or expired verification code"}
+        if not record:
+            return {"success": False, "message": "Invalid verification code"}
+        if record['expires_at'] < datetime.now():
+            return {"success": False, "message": "Verification code has expired"}
+        if not record['verified']:
+            return {"success": False, "message": "Please verify your OTP first before resetting password"}
+        self.admin_repository.update_admin_password_by_email(email, new_password)
+        return {"success": True, "message": "Your password has been updated successfully."}
+
+    def reset_admin_password_without_otp(self, email, new_password):
+        """Reset password by checking if there's a verified OTP for the email"""
+        # Check if there's a verified OTP for this email
+        verified_otp = self.admin_repository.get_verified_otp_by_email(email)
+        if not verified_otp:
+            return {"success": False, "message": "No verified OTP found. Please verify your OTP first."}
+        if verified_otp['expires_at'] < datetime.now():
+            return {"success": False, "message": "Your verified OTP has expired. Please request a new one."}
+        
+        # Update the password
         self.admin_repository.update_admin_password_by_email(email, new_password)
         return {"success": True, "message": "Your password has been updated successfully."}
 
@@ -813,3 +807,29 @@ class AdminService:
     def unmark_car_as_best_pick(self, car_id):
         self.car_repository.unmark_as_best_pick(car_id)
         return True
+
+    def get_dashboard_statistics(self):
+        """Get combined dashboard statistics for admin"""
+        try:
+            # Get all the individual statistics
+            cars_listed_this_week = self.get_cars_listed_this_week()
+            cars_sold_this_week = self.get_cars_sold_this_week()
+            listings_pending_approval = self.get_listings_pending_approval()
+            user_incident_reports = self.get_user_incident_reports()
+            
+            return {
+                'success': True,
+                'statistics': {
+                    'cars_listed_this_week': cars_listed_this_week,
+                    'cars_sold_this_week': cars_sold_this_week,
+                    'listings_pending_approval': listings_pending_approval,
+                    'user_incident_reports': user_incident_reports
+                },
+                'status_code': 200
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Error fetching dashboard statistics: {str(e)}',
+                'status_code': 500
+            }

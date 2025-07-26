@@ -66,6 +66,7 @@ def get_car_details(car_id):
         car_service.increment_car_views(car_id)
         
         car = car_service.get_car_by_id(car_id)
+        print("carDetaile in controller", car)
         
         if car:
             # Add consumption and no_of_cylinders to the response
@@ -413,91 +414,38 @@ def get_my_listings():
     try:
         # Get user ID from JWT token
         user_id = get_jwt_identity()
-        
+
         # Get query parameters
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 10, type=int)
-        
-        # Get user's car listings
+        filter_param = request.args.get('filter')  # Can be 'approved', 'pending', etc.
+
+        # Get user's car listings from service
         result = car_service.get_user_cars(
             user_id=user_id,
             page=page,
-            limit=limit
+            limit=limit,
+            filter=filter_param
         )
-        
+
         if result['success']:
             return jsonify({
                 'success': True,
-                'data': {
-                    'approved_pending': result['data']['approved_pending'],
-                    'sold': result['data']['sold'],
-                    'draft': result['data']['draft']
-                }
+                'data': result['data']
             }), 200
         else:
             return jsonify({
                 'success': False,
-                'message': result.get('message', 'Failed to fetch user cars')
+                'message': result.get('message', 'Failed to fetch user cars'),
+                'error': result.get('error')
             }), 500
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
-            'message': str(e)
+            'message': 'Internal server error',
+            'error': str(e)
         }), 500
-
-@car_bp.route('/mark-sold/<int:car_id>', methods=['PUT'])
-@jwt_required()
-def mark_as_sold(car_id):
-    """Mark a car listing as sold"""
-    try:
-        # Get user ID from JWT token
-        user_id = get_jwt_identity()
-        
-        # Mark car as sold
-        result = car_service.mark_as_sold(car_id, user_id)
-        
-        if result['success']:
-            return jsonify({
-                'success': True,
-                'message': result['message']
-            }), 200
-        else:
-            return jsonify({
-                'success': False,
-                'message': result['message']
-            }), 403  # Changed to 403 Forbidden for permission issues
-            
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
-
-@car_bp.route('/feature/<int:car_id>', methods=['PUT'])
-@jwt_required()
-def feature_car(car_id):
-    """Feature a car listing"""
-    try:
-        result = car_service.feature_car(car_id)
-        
-        if result['success']:
-            return jsonify({
-                'success': True,
-                'message': 'Car listing featured successfully'
-            }), 200
-        else:
-            return jsonify({
-                'success': False,
-                'message': result['message']
-            }), 400
-            
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
-
 @car_bp.route('/unfeature/<int:car_id>', methods=['PUT'])
 @jwt_required()
 def unfeature_car(car_id):

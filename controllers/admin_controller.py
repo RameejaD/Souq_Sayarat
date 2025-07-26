@@ -257,6 +257,13 @@ def get_dashboard():
     dashboard = admin_service.get_dashboard()
     return jsonify(dashboard), dashboard['status_code']
 
+@admin_bp.route('/dashboard-statistics', methods=['GET'])
+@admin_session_required
+def get_dashboard_statistics():
+    """Get combined dashboard statistics"""
+    result = admin_service.get_dashboard_statistics()
+    return jsonify(result), result['status_code']
+
 @admin_bp.route('/cars/pending', methods=['GET'])
 @admin_session_required
 def get_pending_cars():
@@ -399,18 +406,6 @@ def resolve_report(report_id):
     else:
         return jsonify({"error": result['message']}), result['status_code']
 
-@admin_bp.route('/featured-cars', methods=['GET'])
-@admin_session_required
-def get_admin_featured_cars():
-    """Get featured car listings for admin"""
-    # Get query parameters
-    page = request.args.get('page', 1, type=int)
-    limit = request.args.get('limit', 10, type=int)
-    
-    # Get featured cars
-    result = admin_service.get_featured_cars(page, limit)
-    return jsonify(result), result['status_code']
-
 @admin_bp.route('/cars/<int:car_id>/feature', methods=['PUT'])
 @admin_session_required
 def feature_car(car_id):
@@ -452,23 +447,7 @@ def mark_best_pick(car_id, is_best_pick):
         admin_service.unmark_car_as_best_pick(car_id)
         return jsonify({"message": "Car unmarked as Best Pick."}), 200
 
-@admin_bp.route('/cars-listed-this-week', methods=['GET'])
-@admin_session_required
-def cars_listed_this_week():
-    result = admin_service.get_cars_listed_this_week()
-    return jsonify(result), 200
 
-@admin_bp.route('/cars-sold-this-week', methods=['GET'])
-@admin_session_required
-def cars_sold_this_week():
-    result = admin_service.get_cars_sold_this_week()
-    return jsonify(result), 200
-
-@admin_bp.route('/listings-pending-approval', methods=['GET'])
-@admin_session_required
-def listings_pending_approval():
-    result = admin_service.get_listings_pending_approval()
-    return jsonify(result), 200
 
 @admin_bp.route('/contact/subjects', methods=['GET'])
 def get_subjects():
@@ -511,11 +490,7 @@ def submit_contact():
             'message': str(e)
         }), 500
 
-@admin_bp.route('/user-incident-reports', methods=['GET'])
-@admin_session_required
-def user_incident_reports():
-    result = admin_service.get_user_incident_reports()
-    return jsonify(result), 200
+
 
 @admin_bp.route('/user-incident-reports-list', methods=['GET'])
 @admin_session_required
@@ -558,11 +533,21 @@ def verify_otp():
 def reset_password():
     data = request.json
     email = data.get('email')
-    otp = data.get('otp')
     new_password = data.get('new_password')
-    if not email or not otp or not new_password:
-        return jsonify({"error": "Email, OTP, and new password are required"}), 400
-    result = admin_service.reset_admin_password(email, otp, new_password)
+    
+    # Check which fields are missing
+    missing_fields = []
+    if not email:
+        missing_fields.append('email')
+    if not new_password:
+        missing_fields.append('new_password')
+    
+    if missing_fields:
+        return jsonify({
+            "error": f"Missing required fields: {', '.join(missing_fields)}"
+        }), 400
+    
+    result = admin_service.reset_admin_password_without_otp(email, new_password)
     if result['success']:
         return jsonify({"message": result['message']}), 200
     else:
@@ -573,3 +558,13 @@ def reset_password():
 def get_car_rejection_reasons():
     result = admin_service.get_car_rejection_reasons()
     return jsonify(result), 200
+@admin_bp.route('/featured-cars', methods=['GET'])
+@token_required
+def get_admin_featured_cars():
+    """Get featured car listings for admin"""
+    # Get query parameters
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+    # Get featured cars
+    result = admin_service.get_featured_cars(page, limit)
+    return jsonify(result), result['status_code']

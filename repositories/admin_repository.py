@@ -139,6 +139,12 @@ class AdminRepository:
         result = execute_query(query, (email, otp))
         return result[0] if result else None
 
+    def get_verified_otp_by_email(self, email):
+        """Get verified OTP record for an email"""
+        query = "SELECT * FROM admin_otp WHERE email = %s AND verified = 1 ORDER BY created_at DESC LIMIT 1"
+        result = execute_query(query, (email,))
+        return result[0] if result else None
+
     def mark_admin_otp_verified(self, otp_id):
         query = "UPDATE admin_otp SET verified = 1 WHERE id = %s"
         execute_query(query, (otp_id,), fetch=False)

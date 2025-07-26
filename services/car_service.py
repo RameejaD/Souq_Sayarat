@@ -59,7 +59,6 @@ class CarService:
     def get_car_by_id(self, car_id):
         """Get a car by ID"""
         car = self.car_repository.get_car_by_id(car_id)
-        
         if car:
             # Get user details
             user = self.user_repository.get_user_by_id(car['user_id'])
@@ -104,7 +103,20 @@ class CarService:
                     limit=5
                 )
                 car['similar_cars'] = similar_cars if similar_cars else []
-            
+
+            # Ensure all required fields are present
+            required_fields = [
+                'id', 'make', 'model', 'year', 'price', 'description', 'fuel_type', 'body_type',
+                'condition', 'location', 'status', 'rejection_reason', 'is_featured', 'created_at', 'updated_at',
+                'ad_title', 'car_information', 'exterior_color', 'trim', 'regional_specs', 'badges', 'kilometers',
+                'warranty_date', 'accident_history', 'number_of_seats', 'number_of_doors', 'transmission_type',
+                'drive_type', 'engine_cc', 'extra_features', 'car_image', 'approval', 'draft', 'sold_at',
+                'consumption', 'no_of_cylinders', 'views', 'likes', 'interior', 'payment_option', 'is_best_pick',
+                'admin_rejection_comment', 'deleted_at'
+            ]
+            for field in required_fields:
+                car.setdefault(field, '')
+
             # Replace None values with empty strings for all fields
             for key, value in car.items():
                 if value is None:   
@@ -123,7 +135,10 @@ class CarService:
                         elif isinstance(v, (int, float)):
                             value[k] = str(v)
                     car[key] = value
-        
+
+            # Ensure transmission_type is always a string and never None
+            if not car.get('transmission_type'):
+                car['transmission_type'] = ''
         return car if car else {}
     
     def create_car(self, user_id, ad_title, description, car_information, exterior_color, trim, regional_specs,
@@ -355,31 +370,39 @@ class CarService:
         
         return cars
     
-    def get_user_cars(self, user_id, page=1, limit=10):
-        """Get user's cars separated by status and draft state"""
-        try:
-            # Get cars from repository
-            cars = self.car_repository.get_user_cars(user_id, page, limit)
-            
-            # Add views to draft cars only
-            for car in cars['draft']:
-                car['views'] = car.get('views', 0)
-            
-            return {
-                'success': True,
-                'data': {
-                    'approved_pending': cars['approved_pending'],
-                    'sold': cars['sold'],
-                    'draft': cars['draft']
-                }
+    def get_user_cars(self, user_id, page=1, limit=10, filter=None):
+     """Get user's cars separated by status and draft state, with optional approval filter"""
+     try:
+        # Get cars from repository
+        cars = self.car_repository.get_user_cars(user_id, page, limit, filter)
+
+        if filter == "approved":
+            approved_pending = cars.get('approved', [])
+        elif filter == "pending":
+            approved_pending = cars.get('pending', [])
+        else:
+            # Combine both if no filter
+            approved_pending = cars.get('approved', []) + cars.get('pending', [])
+
+        # Add default views value to draft cars
+        for car in cars.get('draft', []):
+            car['views'] = car.get('views', 0)
+
+        return {
+            'success': True,
+            'data': {
+                'approved_pending': approved_pending,
+                'sold': cars.get('sold', []),
+                'draft': cars.get('draft', [])
             }
-        except Exception as e:
-            print(f"Error in get_user_cars: {str(e)}")
-            return {
-                'success': False,
-                'message': 'Failed to fetch user cars',
-                'error': str(e)
-            }
+        }
+     except Exception as e:
+        print(f"Error in get_user_cars: {str(e)}")
+        return {
+            'success': False,
+            'message': 'Failed to fetch user cars',
+            'error': str(e)
+        }
 
     def get_all_makes(self):
         """Get all car makes with their images"""
@@ -581,3 +604,47 @@ class CarService:
         except Exception as e:
             print(f"Error incrementing car likes: {str(e)}")
             return False
+    def get_featured_cars(self, page=1, limit=10):
+        """Get featured car listings for admin"""
+        # Get featured cars with pagination
+        cars, total = self.car_repository.get_cars(
+            page=page,
+            limit=limit,
+            filters={'is_featured': True}
+        )
+        
+        # Calculate pagination info
+        total_pages = (total + limit - 1) // limit
+        
+        return {
+            'cars': cars,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'total_pages': total_pages
+            },
+            'status_code': 200
+        }
+    def get_featured_cars(self, page=1, limit=10):
+        """Get featured car listings for admin"""
+        # Get featured cars with pagination
+        cars, total = self.car_repository.get_cars(
+            page=page,
+            limit=limit,
+            filters={'is_featured': True}
+        )
+        
+        # Calculate pagination info
+        total_pages = (total + limit - 1) // limit
+        
+        return {
+            'cars': cars,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'total_pages': total_pages
+            },
+            'status_code': 200
+        }
