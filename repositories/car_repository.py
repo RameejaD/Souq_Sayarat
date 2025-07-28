@@ -360,7 +360,8 @@ class CarRepository:
             car_query = """
                 SELECT * FROM cars WHERE id = %s
             """
-            car = execute_query(car_query, (car_id,))         
+            car = execute_query(car_query, (car_id,))
+            
             if not car:
                 return False, "Car not found"
             
@@ -410,7 +411,7 @@ class CarRepository:
             
             # Finally, delete from cars table
             delete_query = """
-              UPDATE cars SET deleted_at = NOW() WHERE id = %s;
+                DELETE FROM cars WHERE id = %s
             """
             execute_query(delete_query, (car_id,), fetch=False)
             
@@ -426,7 +427,7 @@ class CarRepository:
             SELECT c.*, 
                    (SELECT image_url FROM car_images WHERE car_id = c.id LIMIT 1) AS image_url
             FROM cars c
-            WHERE c.id = %s AND c.deleted_at IS NULL
+            WHERE c.id = %s
         """
         results = execute_query(query, (car_id,))
         if not results:
@@ -446,10 +447,7 @@ class CarRepository:
             filename = car['image_url'].split('/')[-1]
             # Format the image URL in the required format
             car['image_url'] = f"/static/uploads/{filename}"
-        
-        # Ensure transmission_type is always present
-        if 'transmission_type' not in car or car['transmission_type'] is None:
-            car['transmission_type'] = ''
+            
         return car
     
     def get_cars(self, page=1, limit=10, filters=None, user_id=None):
@@ -502,7 +500,7 @@ class CarRepository:
             FROM cars c
             JOIN users u ON c.user_id = u.id
             {where_clause}
-            ORDER BY c.is_best_pick DESC, c.created_at DESC
+            ORDER BY c.created_at DESC
             LIMIT %s OFFSET %s
         """
         params.extend([limit, offset])
@@ -853,7 +851,6 @@ class CarRepository:
             AND c.model = %s 
             AND c.id != %s 
             AND c.status = 'available'
-            AND c.deleted_at IS NULL
             ORDER BY c.created_at DESC
             LIMIT %s
         """
@@ -870,7 +867,6 @@ class CarRepository:
                 WHERE c.make = %s 
                 AND c.id != %s 
                 AND c.status = 'available'
-                AND c.deleted_at IS NULL
                 ORDER BY c.created_at DESC
                 LIMIT %s
             """
@@ -886,7 +882,6 @@ class CarRepository:
                 FROM cars c
                 WHERE c.id != %s 
                 AND c.status = 'unsold'
-                AND c.deleted_at IS NULL
                 ORDER BY c.created_at DESC
                 LIMIT %s
             """
@@ -898,9 +893,6 @@ class CarRepository:
             print("Similar cars found:")
             for car in results:
                 print(f"- Car ID: {car.get('id')}, Make: {car.get('make')}, Model: {car.get('model')}, Status: {car.get('status')}")
-                # Ensure transmission_type is always present
-                if 'transmission_type' not in car or car['transmission_type'] is None:
-                    car['transmission_type'] = ''
         else:
             print("No similar cars found at all")
         
@@ -1146,15 +1138,14 @@ class CarRepository:
         """
         return execute_query(query, (limit,))
     
-    def reject_car(self, car_id, reason, admin_rejection_comment=None):
+    def reject_car(self, car_id, reason):
         """Reject a car listing"""
         query = """
             UPDATE cars
-            SET approval = 'rejected', rejection_reason = %s, admin_rejection_comment = %s, updated_at = %s
+            SET approval = 'rejected', rejection_reason = %s, updated_at = %s
             WHERE id = %s
         """
-        execute_query(query, (reason, admin_rejection_comment, datetime.now(), car_id), fetch=False)
-        return True
+        execute_query(query, (reason, datetime.now(), car_id), fetch=False)
     
     def feature_car(self, car_id):
         """Feature a car listing"""
@@ -1523,10 +1514,9 @@ class CarRepository:
         """
         execute_query(query, fetch=False)
 
-    def get_user_cars(self, user_id, page=1, limit=10, filter=None):
+    def get_user_cars(self, user_id, page=1, limit=10):
         """Get user's cars separated by status and draft state"""
-
-        # Queries
+        # Get approved/pending cars (unsold and not draft)
         approved_query = """
             SELECT c.*, 
                    (SELECT image_url FROM car_images WHERE car_id = c.id LIMIT 1) AS image_url,
@@ -1534,23 +1524,12 @@ class CarRepository:
             FROM cars c
             WHERE c.user_id = %s 
             AND c.status = 'unsold'
-            AND c.approval = 'approved'
             AND c.draft = 0
             ORDER BY c.created_at DESC
         """
-
-        pending_query = """
-            SELECT c.*, 
-                   (SELECT image_url FROM car_images WHERE car_id = c.id LIMIT 1) AS image_url,
-                   COALESCE(c.likes, 0) as likes
-            FROM cars c
-            WHERE c.user_id = %s 
-            AND c.status = 'unsold'
-            AND c.approval = 'pending'
-            AND c.draft = 0
-            ORDER BY c.created_at DESC
-        """
-
+        approved_cars = execute_query(approved_query, (user_id,))
+        
+        # Get sold cars (not draft)
         sold_query = """
             SELECT c.*, 
                    (SELECT image_url FROM car_images WHERE car_id = c.id LIMIT 1) AS image_url,
@@ -1561,112 +1540,83 @@ class CarRepository:
             AND c.draft = 0
             ORDER BY c.created_at DESC
         """
-
+        sold_cars = execute_query(sold_query, (user_id,))
+        
+        # Get draft cars
         draft_query = """
             SELECT c.*, 
                    (SELECT image_url FROM car_images WHERE car_id = c.id LIMIT 1) AS image_url,
-                   COALESCE(c.views, 0) as views,
+                   COALESCE(c.views, '') as views,
                    COALESCE(c.likes, 0) as likes
             FROM cars c
             WHERE c.user_id = %s 
             AND c.draft = 1
             ORDER BY c.created_at DESC
         """
-
-        # Always fetch sold and draft cars
-        sold_cars = execute_query(sold_query, (user_id,))
         draft_cars = execute_query(draft_query, (user_id,))
-
-        # Fetch approved and pending only if needed
-        approved_cars = []
-        pending_cars = []
-
-        if filter == 'approved':
-            approved_cars = execute_query(approved_query, (user_id,))
-            return {
-                "approved": approved_cars,
-                "sold": sold_cars,
-                "draft": draft_cars
-            }
-        elif filter == 'pending':
-            pending_cars = execute_query(pending_query, (user_id,))
-            return {
-                "pending": pending_cars,
-                "sold": sold_cars,
-                "draft": draft_cars
-            }
-        else:
-            approved_cars = execute_query(approved_query, (user_id,))
-            pending_cars = execute_query(pending_query, (user_id,))
-            return {
-                "approved": approved_cars,
-                "pending": pending_cars,
-                "sold": sold_cars,
-                "draft": draft_cars
-            }
+        
+        # Format image URLs and standardize fields for all cars
+        def format_car(car):
+            if car.get('car_image'):
+                filename = car['car_image'].split('/')[-1]
+                car['car_image'] = f"static/uploads/{filename}"
             
-            # Format image URLs and standardize fields for all cars
-            def format_car(car):
-                if car.get('car_image'):
-                    filename = car['car_image'].split('/')[-1]
-                    car['car_image'] = f"static/uploads/{filename}"
-                
-                if car.get('image_url'):
-                    filename = car['image_url'].split('/')[-1]
-                    car['image_url'] = f"static/uploads/{filename}"
-                
-                # Convert is_featured to featured integer (0 or 1)
-                car['is_featured'] = 1 if car.pop('is_featured', 0) else 0
-                
-                # Ensure all fields are present with default values if missing
-                car.setdefault('id', '')
-                car.setdefault('user_id', '')
-                car.setdefault('make', '')
-                car.setdefault('model', '')
-                car.setdefault('year', '')
-                car.setdefault('price', 0)
-                car.setdefault('description', '')
-                car.setdefault('color', '')
-                car.setdefault('mileage', 0)
-                car.setdefault('fuel_type', '')
-                car.setdefault('transmission', '')
-                car.setdefault('body_type', '')
-                car.setdefault('condition', '')
-                car.setdefault('location', '')
-                car.setdefault('status', '')
-                car.setdefault('created_at', '')
-                car.setdefault('updated_at', '')
-                car.setdefault('car_image', '')
-                car.setdefault('image_url', '')
-                car.setdefault('trim', '')
-                car.setdefault('regional_specs', '')
-                car.setdefault('badges', '')
-                car.setdefault('warranty_date', '')
-                car.setdefault('accident_history', '')
-                car.setdefault('number_of_seats', '')
-                car.setdefault('number_of_doors', '')
-                car.setdefault('drive_type', '')
-                car.setdefault('engine_cc', '')
-                car.setdefault('extra_features', '')
-                car.setdefault('is_favorite', False)
-                car.setdefault('likes', 0)
-                
-                # Ensure views is empty string if null
-                if 'views' in car:
-                    car['views'] = car['views'] if car['views'] is not None else ""
-                
-                return car
+            if car.get('image_url'):
+                filename = car['image_url'].split('/')[-1]
+                car['image_url'] = f"static/uploads/{filename}"
             
-            # Format all car arrays
-            approved_cars = [format_car(car) for car in approved_cars]
-            sold_cars = [format_car(car) for car in sold_cars]
-            draft_cars = [format_car(car) for car in draft_cars]
+            # Convert is_featured to featured integer (0 or 1)
+            car['is_featured'] = 1 if car.pop('is_featured', 0) else 0
             
-            return {
-                'approved_pending': approved_cars,
-                'sold': sold_cars,
-                'draft': draft_cars
-            }
+            # Ensure all fields are present with default values if missing
+            car.setdefault('id', '')
+            car.setdefault('user_id', '')
+            car.setdefault('make', '')
+            car.setdefault('model', '')
+            car.setdefault('year', '')
+            car.setdefault('price', 0)
+            car.setdefault('description', '')
+            car.setdefault('color', '')
+            car.setdefault('mileage', 0)
+            car.setdefault('fuel_type', '')
+            car.setdefault('transmission', '')
+            car.setdefault('body_type', '')
+            car.setdefault('condition', '')
+            car.setdefault('location', '')
+            car.setdefault('status', '')
+            car.setdefault('created_at', '')
+            car.setdefault('updated_at', '')
+            car.setdefault('car_image', '')
+            car.setdefault('image_url', '')
+            car.setdefault('trim', '')
+            car.setdefault('regional_specs', '')
+            car.setdefault('badges', '')
+            car.setdefault('warranty_date', '')
+            car.setdefault('accident_history', '')
+            car.setdefault('number_of_seats', '')
+            car.setdefault('number_of_doors', '')
+            car.setdefault('drive_type', '')
+            car.setdefault('engine_cc', '')
+            car.setdefault('extra_features', '')
+            car.setdefault('is_favorite', False)
+            car.setdefault('likes', 0)
+            
+            # Ensure views is empty string if null
+            if 'views' in car:
+                car['views'] = car['views'] if car['views'] is not None else ""
+            
+            return car
+        
+        # Format all car arrays
+        approved_cars = [format_car(car) for car in approved_cars]
+        sold_cars = [format_car(car) for car in sold_cars]
+        draft_cars = [format_car(car) for car in draft_cars]
+        
+        return {
+            'approved_pending': approved_cars,
+            'sold': sold_cars,
+            'draft': draft_cars
+        }
 
     def increment_car_views(self, car_id):
         """Increment the views count for a car"""
@@ -1695,32 +1645,22 @@ class CarRepository:
         """
         execute_query(query, (car_id,), fetch=False)
 
-    def get_cars_listed_since(self, since_datetime):
-        query = """
-            SELECT * FROM cars WHERE created_at >= %s
-        """
-        return execute_query(query, (since_datetime,))
-
-    def get_cars_sold_since(self, since_datetime):
-        query = """
-            SELECT COUNT(*) as count FROM cars WHERE status = 'sold' AND updated_at >= %s
-        """
-        result = execute_query(query, (since_datetime,))
-        return result[0]['count'] if result else 0
-
-    def get_pending_approval_count(self):
-        query = """
-            SELECT COUNT(*) as count FROM cars WHERE approval = 'pending'
-        """
-        result = execute_query(query)
-        return result[0]['count'] if result else 0
-
-    def mark_as_best_pick(self, car_id):
-        query = "UPDATE cars SET is_best_pick = 1, updated_at = NOW() WHERE id = %s"
-        execute_query(query, (car_id,), fetch=False)
-        return True
-
-    def unmark_as_best_pick(self, car_id):
-        query = "UPDATE cars SET is_best_pick = 0, updated_at = NOW() WHERE id = %s"
-        execute_query(query, (car_id,), fetch=False)
-        return True
+    def get_user_listing_stats(self, user_id):
+        """Get listing stats for a user: total, active, sold, rejected, pending (custom logic)"""
+        # Total listings
+        total = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s", (user_id,))[0]['cnt']
+        # Active listings: status='unsold' and approval='approved'
+        active = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND status = 'unsold' AND approval = 'approved'", (user_id,))[0]['cnt']
+        # Sold listings: status='sold' and approval='approved'
+        sold = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND status = 'sold' AND approval = 'approved'", (user_id,))[0]['cnt']
+        # Rejected listings: status='unsold' and approval='rejected'
+        rejected = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND status = 'unsold' AND approval = 'rejected'", (user_id,))[0]['cnt']
+        # Pending listings: status='unsold' and approval='pending'
+        pending = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND status = 'unsold' AND approval = 'pending'", (user_id,))[0]['cnt']
+        return {
+            "total": total,
+            "active": active,
+            "sold": sold,
+            "rejected": rejected,
+            "pending": pending
+        }

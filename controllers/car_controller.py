@@ -7,7 +7,6 @@ from flask_jwt_extended import get_jwt_identity, jwt_required, verify_jwt_in_req
 import json
 import os
 from werkzeug.utils import secure_filename
-import pandas as pd
 
 car_bp = Blueprint('car', __name__)
 car_service = CarService()
@@ -66,7 +65,6 @@ def get_car_details(car_id):
         car_service.increment_car_views(car_id)
         
         car = car_service.get_car_by_id(car_id)
-        print("carDetaile in controller", car)
         
         if car:
             # Add consumption and no_of_cylinders to the response
@@ -344,9 +342,9 @@ def delete_car(car_id):
     try:
         # Get current user
         current_user_id = get_jwt_identity()
+        
         # Get car details to check ownership
-        car = car_service.get_car_by_id_delete(car_id)
-        # print("car_user_id=",car['user_id'])
+        car = car_service.get_car_by_id(car_id)
         if not car:
             return jsonify({
                 'status': 'error',
@@ -354,12 +352,11 @@ def delete_car(car_id):
             }), 404
             
         # Check if user owns the car
-        
-        if car['user_id'] != int(current_user_id):   
-         return jsonify({
+        if car['user_id'] != current_user_id:
+            return jsonify({
                 'status': 'error',
                 'message': 'You are not authorized to delete this car'
-         }), 403
+            }), 403
             
         # Delete the car
         success, message = car_service.delete_car(car_id)
@@ -380,6 +377,24 @@ def delete_car(car_id):
         return jsonify({
             'status': 'error',
             'message': 'An error occurred while deleting the car'
+        }), 500
+
+@car_bp.route('/featured', methods=['GET'])
+def get_featured_cars():
+    """Get featured car listings"""
+    try:
+        # Get featured cars
+        result = car_service.get_featured_cars()
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
         }), 500
 
 @car_bp.route('/recommended', methods=['GET'])
@@ -414,38 +429,91 @@ def get_my_listings():
     try:
         # Get user ID from JWT token
         user_id = get_jwt_identity()
-
+        
         # Get query parameters
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 10, type=int)
-        filter_param = request.args.get('filter')  # Can be 'approved', 'pending', etc.
-
-        # Get user's car listings from service
+        
+        # Get user's car listings
         result = car_service.get_user_cars(
             user_id=user_id,
             page=page,
-            limit=limit,
-            filter=filter_param
+            limit=limit
         )
-
+        
         if result['success']:
             return jsonify({
                 'success': True,
-                'data': result['data']
+                'data': {
+                    'approved_pending': result['data']['approved_pending'],
+                    'sold': result['data']['sold'],
+                    'draft': result['data']['draft']
+                }
             }), 200
         else:
             return jsonify({
                 'success': False,
-                'message': result.get('message', 'Failed to fetch user cars'),
-                'error': result.get('error')
+                'message': result.get('message', 'Failed to fetch user cars')
             }), 500
-
+        
     except Exception as e:
         return jsonify({
             'success': False,
-            'message': 'Internal server error',
-            'error': str(e)
+            'message': str(e)
         }), 500
+
+@car_bp.route('/mark-sold/<int:car_id>', methods=['PUT'])
+@jwt_required()
+def mark_as_sold(car_id):
+    """Mark a car listing as sold"""
+    try:
+        # Get user ID from JWT token
+        user_id = get_jwt_identity()
+        
+        # Mark car as sold
+        result = car_service.mark_as_sold(car_id, user_id)
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': result['message']
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'message': result['message']
+            }), 403  # Changed to 403 Forbidden for permission issues
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@car_bp.route('/feature/<int:car_id>', methods=['PUT'])
+@jwt_required()
+def feature_car(car_id):
+    """Feature a car listing"""
+    try:
+        result = car_service.feature_car(car_id)
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': 'Car listing featured successfully'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'message': result['message']
+            }), 400
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
 @car_bp.route('/unfeature/<int:car_id>', methods=['PUT'])
 @jwt_required()
 def unfeature_car(car_id):
@@ -918,66 +986,3 @@ def edit_draft_car(car_id):
             'success': False,
             'message': str(e)
         }), 500
-
-@car_bp.route('/upload-cars-xlsx', methods=['POST'])
-@jwt_required()
-def upload_cars_xlsx():
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'No file part'}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'success': False, 'message': 'No selected file'}), 400
-
-    try:
-        # Read Excel file using pandas
-        df = pd.read_excel(file)
-        car_ids = []
-        user_id = get_jwt_identity()  # Get user_id from JWT token
-        allowed_status = ['available', 'unsold', 'sold']
-
-        for _, row in df.iterrows():
-            status_value = str(row.get('status', '')).strip().lower()
-            if status_value not in allowed_status:
-                status_value = 'unsold'
-            car_id = car_service.create_car(
-                user_id=user_id,
-                ad_title=row.get('ad_title', ''),
-                description=row.get('description', ''),
-                car_information=row.get('car_information', ''),
-                exterior_color=row.get('exterior_color', ''),
-                interior=row.get('interior', ''),
-                trim=row.get('trim', ''),
-                regional_specs=row.get('regional_specs', ''),
-                body_type=row.get('body_type', ''),
-                condition=row.get('condition', ''),
-                badges=row.get('badges', ''),
-                kilometers=row.get('kilometers', ''),
-                location=row.get('location', ''),
-                year=row.get('year', ''),
-                warranty_date=row.get('warranty_date', ''),
-                accident_history=row.get('accident_history', ''),
-                number_of_seats=row.get('number_of_seats', ''),
-                number_of_doors=row.get('number_of_doors', ''),
-                fuel_type=row.get('fuel_type', ''),
-                transmission_type=row.get('transmission_type', ''),
-                drive_type=row.get('drive_type', ''),
-                engine_cc=row.get('engine_cc', ''),
-                make=row.get('make', ''),
-                model=row.get('model', ''),
-                price=row.get('price', ''),
-                extra_features=row.get('extra_features', ''),
-                car_image='',
-                consumption=row.get('consumption', ''),
-                no_of_cylinders=row.get('no_of_cylinders', ''),
-                payment_option=row.get('payment_option', ''),
-                draft=(str(row.get('draft', 'false')).lower() in ['true', '1']),
-                skip_required_check=True,
-                status=status_value
-            )
-            car_ids.append(car_id)
-
-        return jsonify({'message': 'Cars uploaded successfully', 'success': True}), 201
-
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
