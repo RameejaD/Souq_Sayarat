@@ -5,8 +5,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from utils.file_upload import save_file
 import os
 from werkzeug.utils import secure_filename
-import random
-from utils.auth import admin_token_required
+
 
 user_bp = Blueprint('user', __name__)
 user_service = UserService()
@@ -411,6 +410,41 @@ def verify_and_update_phone():
             'message': str(e)
         }), 500
 
+@user_bp.route('/send-change-phone-otp', methods=['POST'])
+@jwt_required()
+def send_change_phone_otp():
+    """Send OTP to new phone number"""
+    data = request.json
+    if 'phone_number' not in data:
+        return jsonify({"success": False, "message": "Phone number is required"}), 400
+
+    user_id = get_jwt_identity()
+    response = user_service.send_phone_change_otp(user_id, data['phone_number'])
+    return jsonify(response), 200
+
+@user_bp.route('/verify-change-phone-otp', methods=['POST'])
+@jwt_required()
+def verify_change_phone_otp():
+    """Verify OTP and update phone number"""
+    data = request.json
+    required_fields = ['request_id', 'otp']
+
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"success": False, "message": f"Missing field: {field}"}), 400
+
+    user_id = get_jwt_identity()
+    response = user_service.verify_phone_change_otp(user_id, data['request_id'], data['otp'])
+
+    if response['success']:
+        return jsonify({
+            "success": True,
+            "message": "Your phone number has been changed",
+            "new_phone_number": response['new_phone_number']
+        }), 200
+    else:
+        return jsonify({"success": False, "message": response['message']}), 400
+
 @user_bp.route('/block/<int:user_id>', methods=['POST'])
 @token_required
 def block_user(user_id):
@@ -444,48 +478,13 @@ def get_blocked_users():
     else:
         return jsonify({"error": result['message']}), 400
 
-@user_bp.route('/delete', methods=['POST'])
+@user_bp.route('/user-incident-reports-list', methods=['GET'])
 @token_required
-def send_delete_otp():
-    """Send a 4-digit OTP to the user for account deletion verification"""
-    otp = ''.join(random.choices('0123456789', k=4))
-    result = user_service.save_delete_otp(g.user_id, otp)
-    if result['success']:
-        # In production, do not return the OTP in the response
-        return jsonify({"message": "OTP sent successfully", "otp": otp}), 200
-    else:
-        return jsonify({"error": result['message']}), 400
+def user_incident_reports_list():
+    result = user_service.get_user_incident_reports_list()
+    return jsonify(result), 200
 
-@user_bp.route('/delete/otp_verification', methods=['POST'])
-@token_required
-def verify_delete_otp():
-    """Verify OTP and soft delete the user if correct"""
-    data = request.json
-    otp = data.get('otp')
-    if not otp:
-        return jsonify({"error": "OTP is required"}), 400
-    result = user_service.verify_and_delete_user(g.user_id, otp)
-    if result['success']:
-        return jsonify({"message": "User deleted successfully"}), 200
-    else:
-        return jsonify({"error": result['message']}), 400
-
-@user_bp.route('/summary/<int:user_id>', methods=['GET'])
-@admin_token_required  # Accepts JWT for all admins (super and sub)
-def get_user_summary(user_id):
-    summary = user_service.get_user_summary(user_id)
-    if summary['success']:
-        return jsonify(summary['data']), 200
-    else:
-        return jsonify({"error": summary['message']}), 404
-
-@user_bp.route('/report/<int:reported_user_id>', methods=['POST'])
-@token_required
-def report_user(reported_user_id):
-    data = request.get_json()
-    reporter_user_id = g.user_id
-    report_reason = data.get('report_reason')
-    if not report_reason:
-        return jsonify({'success': False, 'message': 'report_reason is required'}), 400
-    user_service.report_user(reporter_user_id, reported_user_id, report_reason)
-    return jsonify({'success': True, 'message': 'User reported successfully'}), 201
+@user_bp.route('/car-rejection-reasons', methods=['GET'])
+def get_car_rejection_reasons():
+    result = user_service.get_car_rejection_reasons()
+    return jsonify(result), 200

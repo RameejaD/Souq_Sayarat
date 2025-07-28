@@ -70,6 +70,9 @@ message_service.init_socketio(socketio)
 def health_check():
     return jsonify({"status": "healthy", "message": "Souq Sayarat API is running"})
 
+for rule in app.url_map.iter_rules():
+    print(rule)
+
 if __name__ == '__main__':
     print("Starting server on http://0.0.0.0:5000")
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)

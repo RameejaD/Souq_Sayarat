@@ -18,23 +18,14 @@ class AdminRepository:
     
     def authenticate_admin(self, email, password):
         """Authenticate admin with email and password"""
-        query = """
-            SELECT id, email, password_hash, is_super_admin, is_subscription_transaction_manager, 
-                   is_listing_manager, is_user_manager, is_support_manager, needs_password_update
-            FROM admins
-            WHERE email = %s AND deleted_at IS NULL
-        """
-        results = execute_query(query, (email,))
-        
-        if not results:
+        query = "SELECT * FROM admins WHERE email = %s"
+        result = execute_query(query, (email,))
+        if not result:
             return None
-        
-        admin = results[0]
-        
-        # Verify password using Argon2 for admin passwords
-        if self.verify_admin_password(password, admin['password_hash']):
+        admin = result[0]
+        stored_hash = admin['password_hash']
+        if bcrypt.checkpw(password.encode(), stored_hash.encode()):
             return admin
-        
         return None
     
     def hash_admin_password(self, password, use_static_salt=False):
@@ -49,12 +40,19 @@ class AdminRepository:
             hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(12))
             return hashed.decode('utf-8')
     
-    def verify_admin_password(self, password, stored_hash):
-        """Verify admin password using static bcrypt hash"""
-        try:
-            return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
-        except Exception:
+    def verify_admin_password(self, admin_id, current_password):
+        query = "SELECT password_hash FROM admins WHERE id = %s"
+        result = execute_query(query, (admin_id,))
+        if not result:
             return False
+        stored_hash = result[0]['password_hash']
+        return bcrypt.checkpw(current_password.encode(), stored_hash.encode())
+
+    def update_admin_password(self, admin_id, new_password):
+        new_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        query = "UPDATE admins SET password_hash = %s, updated_at = NOW() WHERE id = %s"
+        execute_query(query, (new_hash, admin_id), fetch=False)
+        return True
     
     def create_admin_session(self, admin_id, session_token, expires_at):
         """Create a new admin session"""
@@ -124,16 +122,37 @@ class AdminRepository:
         return self.get_admin_by_email(email)
     
     def get_admin_by_email(self, email):
-        """Get admin by email"""
+        query = "SELECT * FROM admins WHERE email = %s"
+        result = execute_query(query, (email,))
+        return result[0] if result else None
+
+    def save_admin_otp(self, email, otp, expires_at):
         query = """
-            SELECT id, email, is_super_admin, is_subscription_transaction_manager,
-                   is_listing_manager, is_user_manager, is_support_manager,
-                   created_at, updated_at, needs_password_update
-            FROM admins
-            WHERE email = %s AND deleted_at IS NULL
+            INSERT INTO admin_otp (email, otp, expires_at, verified)
+            VALUES (%s, %s, %s, 0)
+            ON DUPLICATE KEY UPDATE otp=%s, expires_at=%s, verified=0, updated_at=NOW()
         """
-        results = execute_query(query, (email,))
-        return results[0] if results else None
+        execute_query(query, (email, otp, expires_at, otp, expires_at), fetch=False)
+
+    def get_admin_otp(self, email, otp):
+        query = "SELECT * FROM admin_otp WHERE email = %s AND otp = %s"
+        result = execute_query(query, (email, otp))
+        return result[0] if result else None
+
+    def get_verified_otp_by_email(self, email):
+        """Get verified OTP record for an email"""
+        query = "SELECT * FROM admin_otp WHERE email = %s AND verified = 1 ORDER BY created_at DESC LIMIT 1"
+        result = execute_query(query, (email,))
+        return result[0] if result else None
+
+    def mark_admin_otp_verified(self, otp_id):
+        query = "UPDATE admin_otp SET verified = 1 WHERE id = %s"
+        execute_query(query, (otp_id,), fetch=False)
+
+    def update_admin_password_by_email(self, email, new_password):
+        new_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        query = "UPDATE admins SET password_hash = %s, updated_at = NOW() WHERE email = %s"
+        execute_query(query, (new_hash, email), fetch=False)
     
     def update_admin_permissions(self, admin_id, permissions):
         """Update admin permissions"""
@@ -329,128 +348,15 @@ class AdminRepository:
         execute_query(query, (user_id, subject, message), fetch=False)
         return True
 
-    def search_users(self, search_query, page=1, limit=10):
-        """Search users by name, email, or phone number with closest matches and pagination"""
-        try:
-            search_pattern = f"%{search_query}%"
-            offset = (page - 1) * limit
-            query = """
-                SELECT 
-                    id, first_name, last_name, email, phone_number, 
-                    user_type, is_verified
-                FROM users 
-                WHERE deleted_at IS NULL
-                AND (
-                    first_name LIKE %s 
-                    OR last_name LIKE %s 
-                    OR CONCAT(first_name, ' ', last_name) LIKE %s
-                    OR email LIKE %s 
-                    OR phone_number LIKE %s
-                )
-                ORDER BY 
-                    CASE 
-                        WHEN first_name LIKE %s OR last_name LIKE %s THEN 1
-                        WHEN email LIKE %s THEN 2
-                        WHEN phone_number LIKE %s THEN 3
-                        ELSE 4
-                    END,
-                    created_at DESC
-                LIMIT %s OFFSET %s
-            """
-            params = [
-                search_pattern, search_pattern, search_pattern, search_pattern, search_pattern,
-                search_pattern, search_pattern, search_pattern, search_pattern,
-                limit, offset
-            ]
-            users = execute_query(query, params)
-            # Get total count
-            count_query = """
-                SELECT COUNT(*) as total
-                FROM users
-                WHERE deleted_at IS NULL
-                AND (
-                    first_name LIKE %s 
-                    OR last_name LIKE %s 
-                    OR CONCAT(first_name, ' ', last_name) LIKE %s
-                    OR email LIKE %s 
-                    OR phone_number LIKE %s
-                )
-            """
-            count_params = [search_pattern]*5
-            count_result = execute_query(count_query, count_params)
-            total = count_result[0]['total'] if count_result else 0
-            return users, total
-        except Exception as e:
-            print(f"Error in search_users repository: {str(e)}")
-            raise e
+    def get_user_incident_reports_count(self):
+        query = "SELECT COUNT(*) as count FROM reported_users"
+        result = execute_query(query)
+        return result[0]['count'] if result else 0
 
-    def get_reported_users(self, page=1, limit=10):
-        offset = (page - 1) * limit
-        query = '''
-            SELECT r.id as report_id, r.reported_user_id, r.reporter_user_id, r.flag, r.reported_at,
-                   u_reported.first_name as reported_first_name, u_reported.last_name as reported_last_name, u_reported.email as reported_email, u_reported.phone_number as reported_phone_number, u_reported.user_type as reported_user_type, u_reported.is_verified as reported_is_verified,
-                   u_reporter.id as reporter_id, u_reporter.first_name as reporter_first_name, u_reporter.last_name as reporter_last_name
-            FROM reported_users r
-            JOIN users u_reported ON r.reported_user_id = u_reported.id
-            JOIN users u_reporter ON r.reporter_user_id = u_reporter.id
-            ORDER BY r.reported_at DESC
-            LIMIT %s OFFSET %s
-        '''
-        results = execute_query(query, (limit, offset))
-        # For each reported_user_id, get the total report count
-        count_query = 'SELECT COUNT(*) as total FROM reported_users'
-        total = execute_query(count_query)[0]['total']
-        # Optionally, add report_count for each reported_user_id
-        report_counts = {}
-        for row in results:
-            uid = row['reported_user_id']
-            if uid not in report_counts:
-                count = execute_query('SELECT COUNT(*) as cnt FROM reported_users WHERE reported_user_id = %s', (uid,))[0]['cnt']
-                report_counts[uid] = count
-            row['report_count'] = report_counts[uid]
-            # Add reporter_name for convenience
-            row['reporter_name'] = f"{row['reporter_first_name']} {row['reporter_last_name']}"
-        return {'success': True, 'data': results, 'total': total, 'page': page, 'limit': limit}
+    def get_user_incident_reports_list(self):
+        query = "SELECT id, reporter_user_id, reported_user_id, reported_reason, reported_at, flag FROM reported_users ORDER BY reported_at DESC"
+        return execute_query(query)
 
-    def flag_reported_user(self, reported_user_id):
-        # Update flag for all rows with this reported_user_id
-        update_query = 'UPDATE reported_users SET flag = 1 WHERE reported_user_id = %s'
-        execute_query(update_query, (reported_user_id,), fetch=False)
-        # Check if the update was successful
-        check_query = 'SELECT COUNT(*) as cnt FROM reported_users WHERE reported_user_id = %s AND flag = 1'
-        result = execute_query(check_query, (reported_user_id,))
-        if result and result[0]['cnt'] > 0:
-            return True
-        return False
-
-    def ban_reported_user(self, report_id, ban_reason):
-        # Get reported_user_id from report
-        get_query = 'SELECT reported_user_id FROM reported_users WHERE id = %s'
-        result = execute_query(get_query, (report_id,))
-        if not result:
-            return False
-        user_id = result[0]['reported_user_id']
-        # Ban user
-        ban_query = 'UPDATE users SET is_banned = 1, ban_reason = %s WHERE id = %s'
-        execute_query(ban_query, (ban_reason, user_id), fetch=False)
-        return True
-
-    def get_watchlist(self, page=1, limit=10):
-        offset = (page - 1) * limit
-        query = '''
-            SELECT DISTINCT u.id, u.first_name, u.last_name, u.email, u.phone_number, u.user_type, u.is_verified,
-                (SELECT COUNT(*) FROM cars WHERE user_id = u.id) as total_listings
-            FROM users u
-            JOIN reported_users r ON u.id = r.reported_user_id
-            WHERE r.flag = 1
-            ORDER BY u.id DESC
-            LIMIT %s OFFSET %s
-        '''
-        users = execute_query(query, (limit, offset))
-        count_query = '''SELECT COUNT(DISTINCT u.id) as total FROM users u JOIN reported_users r ON u.id = r.reported_user_id WHERE r.flag = 1'''
-        total = execute_query(count_query)[0]['total']
-        # Optionally, fetch listing details for each user
-        for user in users:
-            listings_query = 'SELECT id, make, model, year, status, approval FROM cars WHERE user_id = %s'
-            user['listings'] = execute_query(listings_query, (user['id'],))
-        return {'success': True, 'data': users, 'total': total, 'page': page, 'limit': limit}
+    def get_car_rejection_reasons(self):
+        query = "SELECT id, rejected_reason FROM car_rejection_reason"
+        return execute_query(query)

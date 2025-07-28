@@ -6,7 +6,8 @@ from utils.db import execute_query
 import secrets
 import hashlib
 import os
-from utils.auth import generate_token
+import random
+import string
 
 class AdminService:
     def __init__(self):
@@ -33,8 +34,8 @@ class AdminService:
                 'status_code': 401
             }
         
-        # Create JWT token (standard JWS Compact Serialization)
-        session_token = generate_token(admin['id'])
+        # Create session token (256 bits)
+        session_token = self.generate_admin_token()
         expires_at = datetime.now() + timedelta(hours=24)  # 24 hour session
         
         # Create session
@@ -122,14 +123,12 @@ class AdminService:
                 'message': 'Admin not found',
                 'status_code': 404
             }
-        
         if not force_update:
-            # Verify current password
-            auth_result = self.admin_repository.authenticate_admin(admin['email'], current_password)
-            if not auth_result:
+            # Verify current password using the new repository method
+            if not self.admin_repository.verify_admin_password(admin_id, current_password):
                 return {
                     'success': False,
-                    'message': 'Current password is incorrect',
+                    'message': 'Please enter your current password to proceed with changing your password',
                     'status_code': 401
                 }
         # Update password
@@ -329,17 +328,14 @@ class AdminService:
         }
     
     def approve_car(self, car_id):
-        """Approve a car listing"""
         # Check if car exists
         car = self.car_repository.get_car_by_id(car_id)
-        
         if not car:
             return {
                 'success': False,
                 'message': 'Car listing not found',
                 'status_code': 404
             }
-        
         # Check if car is pending approval
         if car['approval'] != 'pending':
             return {
@@ -347,32 +343,36 @@ class AdminService:
                 'message': 'Car listing is not pending approval',
                 'status_code': 400
             }
-        
-        # Approve car - update approval to approved and status to available
+        # Approve car - update approval to approved and status to unsold
         query = """
             UPDATE cars
-            SET approval = 'approved', status = 'available', sold_at = NULL, updated_at = %s
+            SET approval = 'approved', status = 'unsold', sold_at = NULL, updated_at = %s
             WHERE id = %s
         """
         execute_query(query, (datetime.now(), car_id), fetch=False)
-        
+        # Fetch user info
+        user_id = car.get('user_id')
+        user = self.user_repository.get_user_by_id(user_id) if user_id else None
         return {
+            'message': 'Car listing approved successfully',
+            'userId': user_id,
+            'first_name': user.get('first_name') if user else None,
+            'last_name': user.get('last_name') if user else None,
+            'phone_number': user.get('phone_number') if user else None,
+            'email': user.get('email') if user else None,
             'success': True,
             'status_code': 200
         }
     
-    def reject_car(self, car_id, reason):
-        """Reject a car listing"""
+    def reject_car(self, car_id, reason, admin_rejection_comment=None):
         # Check if car exists
         car = self.car_repository.get_car_by_id(car_id)
-        
         if not car:
             return {
                 'success': False,
                 'message': 'Car listing not found',
                 'status_code': 404
             }
-        
         # Check if car is pending approval
         if car['approval'] != 'pending':
             return {
@@ -380,17 +380,19 @@ class AdminService:
                 'message': 'Car listing is not pending approval',
                 'status_code': 400
             }
-        
-        # Reject car - update approval to rejected and add rejection reason
-        query = """
-            UPDATE cars
-            SET approval = 'rejected', rejection_reason = %s, updated_at = %s
-            WHERE id = %s
-        """
-        execute_query(query, (reason, datetime.now(), car_id), fetch=False)
-        
+        # Reject car - update approval to rejected, add rejection reason and admin comment
+        self.car_repository.reject_car(car_id, reason, admin_rejection_comment)
+        # Fetch user info
+        user_id = car.get('user_id')
+        user = self.user_repository.get_user_by_id(user_id) if user_id else None
         return {
             'success': True,
+            'userId': user_id,
+            'first_name': user.get('first_name') if user else None,
+            'last_name': user.get('last_name') if user else None,
+            'phone_number': user.get('phone_number') if user else None,
+            'email': user.get('email') if user else None,
+            'rejection_reason': reason,
             'status_code': 200
         }
     
@@ -600,29 +602,6 @@ class AdminService:
             'status_code': 200
         }
     
-    def get_featured_cars(self, page=1, limit=10):
-        """Get featured car listings for admin"""
-        # Get featured cars with pagination
-        cars, total = self.car_repository.get_cars(
-            page=page,
-            limit=limit,
-            filters={'is_featured': True}
-        )
-        
-        # Calculate pagination info
-        total_pages = (total + limit - 1) // limit
-        
-        return {
-            'cars': cars,
-            'pagination': {
-                'page': page,
-                'limit': limit,
-                'total': total,
-                'total_pages': total_pages
-            },
-            'status_code': 200
-        }
-    
     def feature_car(self, car_id):
         """Feature a car listing"""
         # Check if car exists
@@ -724,23 +703,133 @@ class AdminService:
                 'status_code': 500
             }
 
-    def search_users(self, search_query, page=1, limit=10):
-        """Search users by name, email, or phone number with pagination"""
+    def get_car_by_id(self, car_id):
+        return self.car_repository.get_car_by_id(car_id)
+
+    def get_cars_listed_this_week(self):
+        from datetime import datetime, timedelta
+        since = datetime.now() - timedelta(days=7)
+        # Get all cars listed in the last 7 days
+        cars = self.car_repository.get_cars_listed_since(since)
+        # Count by seller type
+        individuals = 0
+        dealers = 0
+        for car in cars:
+            user = self.user_repository.get_user_by_id(car['user_id'])
+            if user and user.get('user_type') == 'dealer':
+                dealers += 1
+            else:
+                individuals += 1
+        return {
+            'total': len(cars),
+            'individuals': individuals,
+            'dealers': dealers
+        }
+
+    def get_cars_sold_this_week(self):
+        from datetime import datetime, timedelta
+        since = datetime.now() - timedelta(days=7)
+        count = self.car_repository.get_cars_sold_since(since)
+        return {"sold_this_week": count}
+
+    def get_listings_pending_approval(self):
+        count = self.car_repository.get_pending_approval_count()
+        return {"pending_approval": count}
+
+    def get_user_incident_reports(self):
+        count = self.admin_repository.get_user_incident_reports_count()
+        return {"incident_reports": count}
+
+    def get_user_incident_reports_list(self):
+        reports = self.admin_repository.get_user_incident_reports_list()
+        return {"reports": reports}
+
+    def get_dealer_verification_tasks(self):
+        # Assume user_repository has methods to get counts for new and resubmissions
+        new = self.user_repository.get_pending_dealer_verifications(type='new')
+        resubmissions = self.user_repository.get_pending_dealer_verifications(type='resubmission')
+        return {
+            "pending_verification": new + resubmissions,
+            "new_applications": new,
+            "resubmissions": resubmissions
+        }
+
+    def send_admin_otp(self, email):
+        admin = self.admin_repository.get_admin_by_email(email)
+        if not admin:
+            return {"success": False, "message": "Email does not exist"}
+        otp = ''.join(random.choices(string.digits, k=6))
+        expires_at = datetime.now() + timedelta(minutes=10)
+        self.admin_repository.save_admin_otp(email, otp, expires_at)
+        # TODO: Implement actual email sending here
+        print(f"Send OTP {otp} to {email}")
+        return {"success": True, "message": "A verification code has been sent to your email"}
+
+    def verify_admin_otp(self, email, otp):
+        record = self.admin_repository.get_admin_otp(email, otp)
+        if not record or record['expires_at'] < datetime.now() or record['verified']:
+            return {"success": False, "message": "Invalid or expired verification code"}
+        self.admin_repository.mark_admin_otp_verified(record['id'])
+        return {"success": True, "message": "OTP verified. You may now reset your password."}
+
+    def reset_admin_password(self, email, otp, new_password):
+        record = self.admin_repository.get_admin_otp(email, otp)
+        if not record:
+            return {"success": False, "message": "Invalid verification code"}
+        if record['expires_at'] < datetime.now():
+            return {"success": False, "message": "Verification code has expired"}
+        if not record['verified']:
+            return {"success": False, "message": "Please verify your OTP first before resetting password"}
+        self.admin_repository.update_admin_password_by_email(email, new_password)
+        return {"success": True, "message": "Your password has been updated successfully."}
+
+    def reset_admin_password_without_otp(self, email, new_password):
+        """Reset password by checking if there's a verified OTP for the email"""
+        # Check if there's a verified OTP for this email
+        verified_otp = self.admin_repository.get_verified_otp_by_email(email)
+        if not verified_otp:
+            return {"success": False, "message": "No verified OTP found. Please verify your OTP first."}
+        if verified_otp['expires_at'] < datetime.now():
+            return {"success": False, "message": "Your verified OTP has expired. Please request a new one."}
+        
+        # Update the password
+        self.admin_repository.update_admin_password_by_email(email, new_password)
+        return {"success": True, "message": "Your password has been updated successfully."}
+
+    def get_car_rejection_reasons(self):
+        reasons = self.admin_repository.get_car_rejection_reasons()
+        return {"rejection_reasons": reasons}
+
+    def mark_car_as_best_pick(self, car_id):
+        self.car_repository.mark_as_best_pick(car_id)
+        return True
+
+    def unmark_car_as_best_pick(self, car_id):
+        self.car_repository.unmark_as_best_pick(car_id)
+        return True
+
+    def get_dashboard_statistics(self):
+        """Get combined dashboard statistics for admin"""
         try:
-            users, total = self.admin_repository.search_users(search_query, page, limit)
-            return users, total
+            # Get all the individual statistics
+            cars_listed_this_week = self.get_cars_listed_this_week()
+            cars_sold_this_week = self.get_cars_sold_this_week()
+            listings_pending_approval = self.get_listings_pending_approval()
+            user_incident_reports = self.get_user_incident_reports()
+            
+            return {
+                'success': True,
+                'statistics': {
+                    'cars_listed_this_week': cars_listed_this_week,
+                    'cars_sold_this_week': cars_sold_this_week,
+                    'listings_pending_approval': listings_pending_approval,
+                    'user_incident_reports': user_incident_reports
+                },
+                'status_code': 200
+            }
         except Exception as e:
-            print(f"Error in search_users service: {str(e)}")
-            raise e
-
-    def get_reported_users(self, page=1, limit=10):
-        return self.admin_repository.get_reported_users(page, limit)
-
-    def flag_reported_user(self, report_id):
-        return self.admin_repository.flag_reported_user(report_id)
-
-    def ban_reported_user(self, report_id, ban_reason):
-        return self.admin_repository.ban_reported_user(report_id, ban_reason)
-
-    def get_watchlist(self, page=1, limit=10):
-        return self.admin_repository.get_watchlist(page, limit)
+            return {
+                'success': False,
+                'message': f'Error fetching dashboard statistics: {str(e)}',
+                'status_code': 500
+            }

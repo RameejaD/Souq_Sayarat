@@ -7,7 +7,7 @@ def get_db_connection():
             host='localhost',
             database='souq_sayarat',
             user='root',
-            password='12345'
+            password='Rameeja@234'
         )
         return connection
     except Error as e:
