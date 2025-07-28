@@ -10,7 +10,7 @@ JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
 DB_HOST = os.environ.get('DB_HOST', 'localhost')
 DB_PORT = os.environ.get('DB_PORT', '3306')
 DB_USER = os.environ.get('DB_USER', 'root')
-DB_PASSWORD = os.environ.get('DB_PASSWORD', '12345')
+DB_PASSWORD = os.environ.get('DB_PASSWORD', 'Rameeja@234')
 DB_NAME = os.environ.get('DB_NAME', 'souq_sayarat')
 
 # SMS configuration
