@@ -1,0 +1,1100 @@
+{
+  "info": {
+    "name": "Souq Sayarat API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone_number\": \"9647700000001\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Register a new user and send OTP"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"request_id\": \"{{request_id}}\",\n    \"otp\": \"123456\",\n    \"first_name\": \"John\",\n    \"last_name\": \"Doe\",\n    \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/verify-otp",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "verify-otp"]
+            },
+            "description": "Verify OTP and complete registration"
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone_number\": \"9647700000001\",\n    \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Login a user"
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone_number\": \"9647700000001\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "forgot-password"]
+            },
+            "description": "Send OTP for password reset"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"request_id\": \"{{request_id}}\",\n    \"otp\": \"123456\",\n    \"new_password\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "reset-password"]
+            },
+            "description": "Reset password with OTP verification"
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"current_password\": \"password123\",\n    \"new_password\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "change-password"]
+            },
+            "description": "Change password for authenticated user"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cars",
+      "item": [
+        {
+          "name": "Get Cars",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cars?page=1&limit=10&make=Toyota&model=Camry&year_from=2015&year_to=2022&price_from=10000&price_to=30000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "make",
+                  "value": "Toyota"
+                },
+                {
+                  "key": "model",
+                  "value": "Camry"
+                },
+                {
+                  "key": "year_from",
+                  "value": "2015"
+                },
+                {
+                  "key": "year_to",
+                  "value": "2022"
+                },
+                {
+                  "key": "price_from",
+                  "value": "10000"
+                },
+                {
+                  "key": "price_to",
+                  "value": "30000"
+                }
+              ]
+            },
+            "description": "Get all cars with pagination and filtering"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Car by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cars/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars", "1"]
+            },
+            "description": "Get a car by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Car",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "make",
+                  "value": "Toyota",
+                  "type": "text"
+                },
+                {
+                  "key": "model",
+                  "value": "Camry",
+                  "type": "text"
+                },
+                {
+                  "key": "year",
+                  "value": "2020",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "25000",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Well maintained Toyota Camry with low mileage",
+                  "type": "text"
+                },
+                {
+                  "key": "color",
+                  "value": "White",
+                  "type": "text"
+                },
+                {
+                  "key": "mileage",
+                  "value": "15000",
+                  "type": "text"
+                },
+                {
+                  "key": "fuel_type",
+                  "value": "Petrol",
+                  "type": "text"
+                },
+                {
+                  "key": "transmission",
+                  "value": "Automatic",
+                  "type": "text"
+                },
+                {
+                  "key": "body_type",
+                  "value": "Sedan",
+                  "type": "text"
+                },
+                {
+                  "key": "condition",
+                  "value": "Used",
+                  "type": "text"
+                },
+                {
+                  "key": "features",
+                  "value": "Air Conditioning, Power Steering, Power Windows",
+                  "type": "text"
+                },
+                {
+                  "key": "location",
+                  "value": "Baghdad",
+                  "type": "text"
+                },
+                {
+                  "key": "image0",
+                  "type": "file",
+                  "src": "/path/to/image1.jpg"
+                },
+                {
+                  "key": "image1",
+                  "type": "file",
+                  "src": "/path/to/image2.jpg"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cars",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars"]
+            },
+            "description": "Create a new car listing"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Car",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "price",
+                  "value": "24000",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Well maintained Toyota Camry with low mileage. Price reduced!",
+                  "type": "text"
+                },
+                {
+                  "key": "image0",
+                  "type": "file",
+                  "src": "/path/to/new_image.jpg"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cars/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars", "1"]
+            },
+            "description": "Update a car listing"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Car",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cars/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars", "1"]
+            },
+            "description": "Delete a car listing"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Featured Cars",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cars/featured?limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars", "featured"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Get featured car listings"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Recommended Cars",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cars/recommended?user_id=1&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars", "recommended"],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Get recommended car listings based on user preferences"
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Listings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cars/my-listings?page=1&limit=10&status=approved",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars", "my-listings"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "approved"
+                }
+              ]
+            },
+            "description": "Get car listings for the authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark as Sold",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cars/1/mark-as-sold",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cars", "1", "mark-as-sold"]
+            },
+            "description": "Mark a car listing as sold"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "profile"]
+            },
+            "description": "Get the profile of the authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "first_name",
+                  "value": "John",
+                  "type": "text"
+                },
+                {
+                  "key": "last_name",
+                  "value": "Doe",
+                  "type": "text"
+                },
+                {
+                  "key": "whatsapp",
+                  "value": "9647700000001",
+                  "type": "text"
+                },
+                {
+                  "key": "location",
+                  "value": "Baghdad",
+                  "type": "text"
+                },
+                {
+                  "key": "profile_image",
+                  "type": "file",
+                  "src": "/path/to/profile.jpg"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "profile"]
+            },
+            "description": "Update the profile of the authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Favorites",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/favorites?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "favorites"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get favorite car listings for the authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Favorite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/favorites/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "favorites", "1"]
+            },
+            "description": "Add a car to favorites"
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Favorite",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/favorites/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "favorites", "1"]
+            },
+            "description": "Remove a car from favorites"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Saved Searches",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/saved-searches?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "saved-searches"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get saved searches for the authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Save Search",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Toyota Camry 2020\",\n    \"search_params\": {\n        \"make\": \"Toyota\",\n        \"model\": \"Camry\",\n        \"year_from\": 2020,\n        \"year_to\": 2022,\n        \"price_from\": 20000,\n        \"price_to\": 30000\n    }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/saved-searches",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "saved-searches"]
+            },
+            "description": "Save a search for the authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Saved Search",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/saved-searches/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "saved-searches", "1"]
+            },
+            "description": "Delete a saved search"
+          },
+          "response": []
+        },
+        {
+          "name": "Get User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/users/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "1"]
+            },
+            "description": "Get a user's public profile"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Search Cars",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/search?page=1&limit=10&make=Toyota&model=Camry&year_from=2020&year_to=2023&price_from=10000&price_to=50000&mileage_from=0&mileage_to=50000&fuel_type=petrol&transmission=automatic&body_type=sedan&condition=new&location=Baghdad&seller_type=dealer&keyword=clean&sort_by=price&sort_order=asc",
+              "host": ["{{base_url}}"],
+              "path": ["api", "search"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "make",
+                  "value": "Toyota"
+                },
+                {
+                  "key": "model",
+                  "value": "Camry"
+                },
+                {
+                  "key": "year_from",
+                  "value": "2020"
+                },
+                {
+                  "key": "year_to",
+                  "value": "2023"
+                },
+                {
+                  "key": "price_from",
+                  "value": "10000"
+                },
+                {
+                  "key": "price_to",
+                  "value": "50000"
+                },
+                {
+                  "key": "mileage_from",
+                  "value": "0"
+                },
+                {
+                  "key": "mileage_to",
+                  "value": "50000"
+                },
+                {
+                  "key": "fuel_type",
+                  "value": "petrol"
+                },
+                {
+                  "key": "transmission",
+                  "value": "automatic"
+                },
+                {
+                  "key": "body_type",
+                  "value": "sedan"
+                },
+                {
+                  "key": "condition",
+                  "value": "new"
+                },
+                {
+                  "key": "location",
+                  "value": "Baghdad"
+                },
+                {
+                  "key": "seller_type",
+                  "value": "dealer"
+                },
+                {
+                  "key": "keyword",
+                  "value": "clean"
+                },
+                {
+                  "key": "sort_by",
+                  "value": "price"
+                },
+                {
+                  "key": "sort_order",
+                  "value": "asc"
+                }
+              ]
+            },
+            "description": "Search for cars with advanced filtering"
+          }
+        },
+        {
+          "name": "Get Fuel Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/search/fuel-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "search", "fuel-types"]
+            },
+            "description": "Get available fuel types for filtering"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "Get Conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/messages/conversations?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "messages", "conversations"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get all conversations for the authenticated user"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "Get Packages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/packages",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "packages"]
+            },
+            "description": "Get all subscription packages"
+          }
+        },
+        {
+          "name": "Subscribe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"package_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/subscribe",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "subscribe"]
+            },
+            "description": "Subscribe to a package"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Get Payment Methods",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/methods",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "methods"]
+            },
+            "description": "Get all available payment methods"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "dashboard"]
+            },
+            "description": "Get admin dashboard data"
+          }
+        },
+        {
+          "name": "Get Pending Cars",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/cars/pending?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "cars", "pending"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get pending car listings for approval"
+          }
+        },
+        {
+          "name": "Approve Car",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/cars/1/approve",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "cars", "1", "approve"]
+            },
+            "description": "Approve a car listing"
+          }
+        },
+        {
+          "name": "Verify User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/1/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users", "1", "verify"]
+            },
+            "description": "Verify a user (for dealers)"
+          }
+        },
+        {
+          "name": "Ban User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"reason\": \"Violation of terms of service\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/1/ban",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users", "1", "ban"]
+            },
+            "description": "Ban a user"
+          }
+        },
+        {
+          "name": "Get Featured Cars",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/featured-cars?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "featured-cars"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get featured car listings for admin"
+          }
+        },
+        {
+          "name": "Feature Car",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/cars/1/feature",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "cars", "1", "feature"]
+            },
+            "description": "Feature a car listing"
+          }
+        },
+        {
+          "name": "Unfeature Car",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/cars/1/unfeature",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "cars", "1", "unfeature"]
+            },
+            "description": "Unfeature a car listing"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "token",
+      "value": "your_jwt_token_here"
+    },
+    {
+      "key": "request_id",
+      "value": "your_request_id_here"
+    }
+  ]
+}
+
