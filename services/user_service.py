@@ -2,7 +2,6 @@ from repositories.user_repository import UserRepository
 from repositories.car_repository import CarRepository
 import random
 import os
-import datetime
 
 class UserService:
     def __init__(self):
@@ -493,75 +492,75 @@ class UserService:
                 'message': str(e)
             }
 
-    def get_user_incident_reports_list(self):
-        from repositories.user_repository import UserRepository
-        user_repository = UserRepository()
-        reports = user_repository.get_user_incident_reports_list()
-        return {"reports": reports}
-
-    def get_car_rejection_reasons(self):
-        from repositories.user_repository import UserRepository
-        user_repository = UserRepository()
-        reasons = user_repository.get_car_rejection_reasons()
-        return {"rejection_reasons": reasons}
-
-    def send_phone_change_otp(self, user_id, new_phone_number):
-        """Generate and save OTP for changing phone"""
+    def soft_delete_user(self, user_id):
+        """Soft delete a user by setting deleted_at"""
+        from datetime import datetime
         user = self.user_repository.get_user_by_id(user_id)
-        old_number = user['phone_number']
-        if old_number == new_phone_number:
-            return {
-                "success": False,
-                "message": "please enter the new number"
+        if not user:
+            return {'success': False, 'message': 'User not found'}
+        self.user_repository.soft_delete_user(user_id, datetime.now())
+        return {'success': True}
+
+    def save_delete_otp(self, user_id, otp):
+        """Save a 4-digit OTP for account deletion verification"""
+        try:
+            self.user_repository.save_delete_otp(user_id, otp)
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+
+    def verify_and_delete_user(self, user_id, otp):
+        """Verify the OTP and soft delete the user if correct"""
+        if not self.user_repository.verify_delete_otp(user_id, otp):
+            return {'success': False, 'message': 'Invalid or expired OTP'}
+        from datetime import datetime
+        self.user_repository.soft_delete_user(user_id, datetime.now())
+        return {'success': True}
+
+    def get_user_summary(self, user_id):
+        user = self.user_repository.get_user_by_id(user_id)
+        if not user:
+            return {'success': False, 'message': 'User not found'}
+        # Get listing stats
+        stats = self.car_repository.get_user_listing_stats(user_id)
+        if user['user_type'] == 'dealer':
+            data = {
+                "profile_pic": user.get("profile_pic"),
+                "company_name": user.get("company_name"),
+                "company_logo": user.get("profile_pic"),
+                "owner_name": user.get("owner_name"),
+                "company_address": user.get("company_address"),
+                "company_phone_number": user.get("company_phone_number"),
+                "company_registration_number": user.get("company_registration_number"),
+                "facebook_page": user.get("facebook_page"),
+                "instagram_company_profile": user.get("instagram_company_profile"),
+                "uploaded_documents": {
+                    "trade_license": user.get("trade_license_doc"),
+                    "id": user.get("id_doc")
+                },
+                "listing_stats": stats,
+                "registered_since": user.get("created_at"),
+                "is_verified": user.get("is_verified"),
+                "is_banned": user.get("is_banned"),
+                "ban_reason": user.get("ban_reason"),
             }
-        otp = self.generate_otp()
-        import random, datetime
-        request_id = f"REQ{random.randint(100000, 999999)}"
-        expiry = datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
+        else:
+            data = {
+                "profile_pic": user.get("profile_pic"),
+                "first_name": user.get("first_name"),
+                "last_name": user.get("last_name"),
+                "phone_number": user.get("phone_number"),
+                "email": user.get("email"),
+                "whatsapp": user.get("whatsapp"),
+                "location": user.get("location"),
+                "registered_since": user.get("created_at"),
+                "listing_stats": stats,
+                "is_verified": user.get("is_verified"),
+                "is_banned": user.get("is_banned"),
+                "ban_reason": user.get("ban_reason"),
+            }
+        return {'success': True, 'data': data}
 
-        # Save OTP details in DB
-        self.user_repository.save_phone_change_otp(
-            request_id,
-            new_phone_number,
-            otp,
-            expiry
-        )
-
-        # ✅ Return OTP directly in response for testing
-        return {
-            "success": True,
-            "message": "OTP sent successfully",
-            "request_id": request_id,
-            "otp": otp
-        }
-
-    def verify_phone_change_otp(self, user_id, request_id, otp_to_verify):
-        """Verify OTP and update phone number"""
-        import datetime
-        otp_record = self.user_repository.get_phone_change_otp(request_id)
-
-        if not otp_record:
-            return {"success": False, "message": "Invalid request ID"}
-
-        if otp_record['otp'] != otp_to_verify:
-            return {"success": False, "message": "Invalid OTP"}
-
-        if datetime.datetime.utcnow() > otp_record['expiry']:
-            return {"success": False, "message": "OTP has expired"}
-
-        # Update phone number
-        self.user_repository.update_user_phone_number(user_id, otp_record['phone_number'])
-
-        # Delete OTP request
-        self.user_repository.delete_phone_change_otp(request_id)
-
-        return {
-            "success": True,
-            "message": "Phone number updated successfully",
-            "new_phone_number": otp_record['phone_number']
-        }
-
-    def generate_otp(self):
-        """Generate a 4-digit OTP"""
-        import random
-        return str(random.randint(1000, 9999))
+    def report_user(self, reporter_user_id, reported_user_id, report_reason):
+        """Report a user (insert into reported_users)"""
+        return self.user_repository.report_user(reporter_user_id, reported_user_id, report_reason)

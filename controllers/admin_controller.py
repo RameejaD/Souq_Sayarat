@@ -16,36 +16,8 @@ def admin_required(f):
     decorated.__name__ = f.__name__
     return decorated
 
-# Middleware to check if user is admin (using session token)
-def admin_session_required(f):
-    def decorated(*args, **kwargs):
-        session_token = request.headers.get('Authorization')
-        if not session_token:
-            return jsonify({"error": "Authorization header required"}), 401
-        
-        # Remove 'Bearer ' prefix if present
-        if session_token.startswith('Bearer '):
-            session_token = session_token[7:]
-        
-        admin = admin_service.get_admin_by_session(session_token)
-        if not admin:
-            return jsonify({"error": "Invalid or expired session"}), 401
-        
-        # Add admin to request context
-        g.admin = admin
-        return f(*args, **kwargs)
-    decorated.__name__ = f.__name__
-    return decorated
-
-# Middleware to check if admin is super admin
-def super_admin_required(f):
-    @admin_session_required
-    def decorated(*args, **kwargs):
-        if not g.admin['is_super_admin']:
-            return jsonify({"error": "Super admin access required"}), 403
-        return f(*args, **kwargs)
-    decorated.__name__ = f.__name__
-    return decorated
+# Remove admin_session_required and super_admin_required
+# Use token_required for all admin endpoints
 
 # Admin Authentication Endpoints
 @admin_bp.route('/login', methods=['POST'])
@@ -65,9 +37,15 @@ def admin_login():
     )
     
     if result['success']:
+        admin = result['admin']
         response = {
             "access_token": result['session_token'],
-            "needs_password_update": result['admin']['needs_password_update'],
+            "needs_password_update": admin['needs_password_update'],
+            "is_super_admin": admin['is_super_admin'],
+            "is_subscription_transaction_manager": admin['is_subscription_transaction_manager'],
+            "is_listing_manager": admin['is_listing_manager'],
+            "is_user_manager": admin['is_user_manager'],
+            "is_support_manager": admin['is_support_manager'],
             "message": result.get('message', 'Login successful')
         }
         return jsonify(response), result['status_code']
@@ -76,9 +54,14 @@ def admin_login():
 
 # New endpoint: update password for sub admin when needs_password_update=1
 @admin_bp.route('/update-password-initial', methods=['PUT'])
-@admin_session_required
+@token_required
 def update_admin_password_initial():
-    """Update admin password for first login (when needs_password_update=1)"""
+    # Patch: set g.admin if not set
+    if not hasattr(g, 'admin') or g.admin is None:
+        admin = admin_service.admin_repository.get_admin_by_id(g.user_id)
+        if not admin:
+            return jsonify({"error": "Admin not found in context"}), 403
+        g.admin = admin
     data = request.json
     # Only require new_password
     if not data or 'new_password' not in data:
@@ -99,7 +82,7 @@ def update_admin_password_initial():
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/logout', methods=['POST'])
-@admin_session_required
+@token_required
 def admin_logout():
     """Admin logout"""
     session_token = request.headers.get('Authorization')
@@ -114,15 +97,20 @@ def admin_logout():
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/profile', methods=['GET'])
-@admin_session_required
+@token_required
 def get_admin_profile():
-    """Get admin profile"""
+    # Patch: set g.admin if not set
+    if not hasattr(g, 'admin') or g.admin is None:
+        admin = admin_service.admin_repository.get_admin_by_id(g.user_id)
+        if not admin:
+            return jsonify({"error": "Admin not found"}), 404
+        g.admin = admin
     return jsonify({
         "admin": g.admin
     }), 200
 
 @admin_bp.route('/update-password', methods=['PUT'])
-@admin_session_required
+@token_required
 def update_admin_password():
     """Update admin password"""
     data = request.json
@@ -145,17 +133,20 @@ def update_admin_password():
 
 # Admin Management Endpoints (Super Admin Only)
 @admin_bp.route('/admins', methods=['POST'])
-@super_admin_required
+@token_required
 def create_admin():
-    """Create a new admin (super admin only)"""
+    # Patch: set g.admin if not set
+    if not hasattr(g, 'admin') or g.admin is None:
+        admin = admin_service.admin_repository.get_admin_by_id(g.user_id)
+        if not admin:
+            return jsonify({"error": "Admin not found in context"}), 403
+        g.admin = admin
     data = request.json
-    
     # Validate required fields
     required_fields = ['email', 'password']
     for field in required_fields:
         if field not in data:
             return jsonify({"error": f"Missing required field: {field}"}), 400
-    
     # Validate permissions
     permissions = {
         'is_super_admin': data.get('is_super_admin', False),
@@ -164,7 +155,6 @@ def create_admin():
         'is_user_manager': data.get('is_user_manager', False),
         'is_support_manager': data.get('is_support_manager', False)
     }
-    
     # Create admin
     result = admin_service.create_admin(
         email=data['email'],
@@ -173,7 +163,6 @@ def create_admin():
         created_by_admin_id=g.admin['id'],
         request=request
     )
-    
     if result['success']:
         return jsonify({
             "message": "Admin created successfully",
@@ -183,7 +172,7 @@ def create_admin():
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/admins', methods=['GET'])
-@super_admin_required
+@token_required
 def get_all_admins():
     """Get all admins (super admin only)"""
     page = request.args.get('page', 1, type=int)
@@ -193,7 +182,7 @@ def get_all_admins():
     return jsonify(result), result['status_code']
 
 @admin_bp.route('/admins/<int:admin_id>', methods=['PUT'])
-@super_admin_required
+@token_required
 def update_admin_permissions(admin_id):
     """Update admin permissions (super admin only)"""
     data = request.json
@@ -220,7 +209,7 @@ def update_admin_permissions(admin_id):
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/admins/<int:admin_id>', methods=['DELETE'])
-@super_admin_required
+@token_required
 def delete_admin(admin_id):
     """Delete an admin (super admin only)"""
     result = admin_service.delete_admin(
@@ -235,7 +224,7 @@ def delete_admin(admin_id):
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/activity-log', methods=['GET'])
-@admin_session_required
+@token_required
 def get_activity_log():
     """Get admin activity log"""
     page = request.args.get('page', 1, type=int)
@@ -251,21 +240,14 @@ def get_activity_log():
 
 # Existing Admin Dashboard Endpoints (Updated to use session authentication)
 @admin_bp.route('/dashboard', methods=['GET'])
-@admin_session_required
+@token_required
 def get_dashboard():
     """Get admin dashboard data"""
     dashboard = admin_service.get_dashboard()
     return jsonify(dashboard), dashboard['status_code']
 
-@admin_bp.route('/dashboard-statistics', methods=['GET'])
-@admin_session_required
-def get_dashboard_statistics():
-    """Get combined dashboard statistics"""
-    result = admin_service.get_dashboard_statistics()
-    return jsonify(result), result['status_code']
-
 @admin_bp.route('/cars/pending', methods=['GET'])
-@admin_session_required
+@token_required
 def get_pending_cars():
     """Get pending car listings for approval"""
     # Get query parameters
@@ -277,18 +259,20 @@ def get_pending_cars():
     return jsonify(result), result['status_code']
 
 @admin_bp.route('/cars/<int:car_id>/approve', methods=['PUT'])
-@admin_session_required
+@token_required
 def approve_car(car_id):
     """Approve a car listing"""
     result = admin_service.approve_car(car_id)
     
     if result['success']:
-        return jsonify(result), result['status_code']
+        return jsonify({
+            "message": "Car listing approved successfully"
+        }), result['status_code']
     else:
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/cars/<int:car_id>/reject', methods=['PUT'])
-@admin_session_required
+@token_required
 def reject_car(car_id):
     """Reject a car listing"""
     data = request.json
@@ -296,16 +280,19 @@ def reject_car(car_id):
     # Validate required fields
     if 'reason' not in data:
         return jsonify({"error": "Missing required field: reason"}), 400
-    # Save admin rejection comment
-    admin_rejection_comment = data.get('admin_rejection_comment', '')
-    result = admin_service.reject_car(car_id, data['reason'], admin_rejection_comment)
+    
+    # Reject car listing
+    result = admin_service.reject_car(car_id, data['reason'])
+    
     if result['success']:
-        return jsonify(result), result['status_code']
+        return jsonify({
+            "message": "Car listing rejected successfully"
+        }), result['status_code']
     else:
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/users', methods=['GET'])
-@admin_session_required
+@token_required
 def get_users():
     """Get all users with pagination and filtering"""
     # Get query parameters
@@ -324,8 +311,64 @@ def get_users():
     
     return jsonify(result), result['status_code']
 
+@admin_bp.route('/search-users', methods=['POST'])
+@token_required
+def search_users():
+    """Search users by name, email, or phone number (pagination via query params)"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'message': 'Request body is required'
+            }), 400
+        search_query = data.get('search_query', '').strip()
+        if not search_query:
+            return jsonify({
+                'success': False,
+                'message': 'Search query is required'
+            }), 400
+        # Get pagination from query params
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        if limit < 1 or limit > 50:
+            limit = 10
+        if page < 1:
+            page = 1
+        # Search users
+        users, total = admin_service.search_users(search_query, page, limit)
+        # Only return required fields
+        filtered_users = [
+            {
+                'id': u['id'],
+                'name': f"{u['first_name']} {u['last_name']}",
+                'email': u['email'],
+                'phone_number': u['phone_number'],
+                'user_type': u['user_type'],
+                'is_verified': u['is_verified']
+            }
+            for u in users
+        ]
+        return jsonify({
+            'success': True,
+            'message': 'Users found successfully',
+            'data': {
+                'users': filtered_users,
+                'total': total,
+                'page': page,
+                'limit': limit,
+                'search_query': search_query
+            }
+        }), 200
+    except Exception as e:
+        print(f"Error in search_users: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'An error occurred while searching users'
+        }), 500
+
 @admin_bp.route('/users/<int:user_id>/verify', methods=['PUT'])
-@admin_session_required
+@token_required
 def verify_user(user_id):
     """Verify a user (for dealers)"""
     result = admin_service.verify_user(user_id)
@@ -338,7 +381,7 @@ def verify_user(user_id):
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/users/<int:user_id>/ban', methods=['PUT'])
-@admin_session_required
+@token_required
 def ban_user(user_id):
     """Ban a user"""
     data = request.json
@@ -357,7 +400,7 @@ def ban_user(user_id):
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/users/<int:user_id>/unban', methods=['PUT'])
-@admin_session_required
+@token_required
 def unban_user(user_id):
     """Unban a user"""
     result = admin_service.unban_user(user_id)
@@ -370,7 +413,7 @@ def unban_user(user_id):
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/reports', methods=['GET'])
-@admin_session_required
+@token_required
 def get_reports():
     """Get user reports with pagination"""
     # Get query parameters
@@ -388,7 +431,7 @@ def get_reports():
     return jsonify(result), result['status_code']
 
 @admin_bp.route('/reports/<int:report_id>/resolve', methods=['PUT'])
-@admin_session_required
+@token_required
 def resolve_report(report_id):
     """Resolve a user report"""
     data = request.json
@@ -406,8 +449,20 @@ def resolve_report(report_id):
     else:
         return jsonify({"error": result['message']}), result['status_code']
 
+@admin_bp.route('/featured-cars', methods=['GET'])
+@token_required
+def get_admin_featured_cars():
+    """Get featured car listings for admin"""
+    # Get query parameters
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+    
+    # Get featured cars
+    result = admin_service.get_featured_cars(page, limit)
+    return jsonify(result), result['status_code']
+
 @admin_bp.route('/cars/<int:car_id>/feature', methods=['PUT'])
-@admin_session_required
+@token_required
 def feature_car(car_id):
     """Feature a car listing"""
     result = admin_service.feature_car(car_id)
@@ -420,7 +475,7 @@ def feature_car(car_id):
         return jsonify({"error": result['message']}), result['status_code']
 
 @admin_bp.route('/cars/<int:car_id>/unfeature', methods=['PUT'])
-@admin_session_required
+@token_required
 def unfeature_car(car_id):
     """Unfeature a car listing"""
     result = admin_service.unfeature_car(car_id)
@@ -432,24 +487,8 @@ def unfeature_car(car_id):
     else:
         return jsonify({"error": result['message']}), result['status_code']
 
-@admin_bp.route('/cars/<int:car_id>/mark-best-pick/<int:is_best_pick>', methods=['PUT'])
-@admin_session_required
-def mark_best_pick(car_id, is_best_pick):
-    car = admin_service.get_car_by_id(car_id)
-    if not car:
-        return jsonify({"error": "Car not found."}), 404
-    if car.get('approval') != 'approved':
-        return jsonify({"error": "Only approved cars can be marked as Best Pick."}), 400
-    if is_best_pick == 1:
-        admin_service.mark_car_as_best_pick(car_id)
-        return jsonify({"message": "Car marked as Best Pick."}), 200
-    else:
-        admin_service.unmark_car_as_best_pick(car_id)
-        return jsonify({"message": "Car unmarked as Best Pick."}), 200
-
-
-
 @admin_bp.route('/contact/subjects', methods=['GET'])
+@token_required
 def get_subjects():
     """Get all subjects and contact information"""
     result = admin_service.get_subjects()
@@ -490,81 +529,37 @@ def submit_contact():
             'message': str(e)
         }), 500
 
-
-
-@admin_bp.route('/user-incident-reports-list', methods=['GET'])
-@admin_session_required
-def user_incident_reports_list():
-    result = admin_service.get_user_incident_reports_list()
-    return jsonify(result), 200
-
-@admin_bp.route('/dealer-verification-tasks', methods=['GET'])
-@admin_session_required
-def dealer_verification_tasks():
-    result = admin_service.get_dealer_verification_tasks()
-    return jsonify(result), 200
-
-@admin_bp.route('/forgot-password', methods=['POST'])
-def forgot_password():
-    data = request.json
-    email = data.get('email')
-    if not email:
-        return jsonify({"error": "Please enter your email address to receive a one-time verification code"}), 400
-    result = admin_service.send_admin_otp(email)
-    if result['success']:
-        return jsonify({"message": result['message']}), 200
-    else:
-        return jsonify({"error": result['message']}), 400
-
-@admin_bp.route('/verify-otp', methods=['POST'])
-def verify_otp():
-    data = request.json
-    email = data.get('email')
-    otp = data.get('otp')
-    if not email or not otp:
-        return jsonify({"error": "Email and OTP are required"}), 400
-    result = admin_service.verify_admin_otp(email, otp)
-    if result['success']:
-        return jsonify({"message": result['message']}), 200
-    else:
-        return jsonify({"error": result['message']}), 400
-
-@admin_bp.route('/reset-password', methods=['POST'])
-def reset_password():
-    data = request.json
-    email = data.get('email')
-    new_password = data.get('new_password')
-    
-    # Check which fields are missing
-    missing_fields = []
-    if not email:
-        missing_fields.append('email')
-    if not new_password:
-        missing_fields.append('new_password')
-    
-    if missing_fields:
-        return jsonify({
-            "error": f"Missing required fields: {', '.join(missing_fields)}"
-        }), 400
-    
-    result = admin_service.reset_admin_password_without_otp(email, new_password)
-    if result['success']:
-        return jsonify({"message": result['message']}), 200
-    else:
-        return jsonify({"error": result['message']}), 400
-
-@admin_bp.route('/car-rejection-reasons', methods=['GET'])
-@admin_session_required
-def get_car_rejection_reasons():
-    result = admin_service.get_car_rejection_reasons()
-    return jsonify(result), 200
-@admin_bp.route('/featured-cars', methods=['GET'])
+@admin_bp.route('/reported-users', methods=['GET'])
 @token_required
-def get_admin_featured_cars():
-    """Get featured car listings for admin"""
-    # Get query parameters
+def get_reported_users():
     page = request.args.get('page', 1, type=int)
     limit = request.args.get('limit', 10, type=int)
-    # Get featured cars
-    result = admin_service.get_featured_cars(page, limit)
-    return jsonify(result), result['status_code']
+    result = admin_service.get_reported_users(page, limit)
+    return jsonify(result), 200
+
+@admin_bp.route('/reported-users/<int:report_id>/flag', methods=['PUT'])
+@token_required
+def flag_reported_user(report_id):
+    success = admin_service.flag_reported_user(report_id)
+    if success:
+        return jsonify({'success': True, 'message': 'User flagged successfully'}), 200
+    else:
+        return jsonify({'success': False, 'message': 'Failed to flag user. Invalid report_id or database error.'}), 400
+
+@admin_bp.route('/reported-users/<int:report_id>/ban', methods=['PUT'])
+@token_required
+def ban_reported_user(report_id):
+    data = request.get_json()
+    ban_reason = data.get('ban_reason')
+    if not ban_reason:
+        return jsonify({'success': False, 'message': 'ban_reason is required'}), 400
+    admin_service.ban_reported_user(report_id, ban_reason)
+    return jsonify({'success': True, 'message': 'User banned successfully'}), 200
+
+@admin_bp.route('/watchlist', methods=['GET'])
+@token_required
+def get_watchlist():
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+    result = admin_service.get_watchlist(page, limit)
+    return jsonify(result), 200

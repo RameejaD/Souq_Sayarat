@@ -67,16 +67,20 @@ class AuthService:
     
     def initiate_login(self, phone_number, otp):
         """Initiate login process with phone number and OTP"""
+        # Check if user exists and is soft deleted
+        user = self.user_repository.get_user_by_phone(phone_number)
+        if user and user.get('deleted_at'):
+            return {
+                'success': False,
+                'message': 'User does not exist. Please sign up.'
+            }
         # Create OTP request
         request_id = str(uuid.uuid4())
         expiry = datetime.now() + timedelta(minutes=5)
-        
         # Save OTP request
         self.auth_repository.save_otp_request(request_id, phone_number, otp, expiry)
-        
         # Send OTP via SMS
         send_otp(phone_number, otp)
-        
         return {
             'success': True,
             'request_id': request_id
@@ -198,6 +202,13 @@ class AuthService:
             return {
                 'success': False,
                 'message': 'Invalid phone number or password'
+            }
+        
+        # Block deleted users
+        if user.get('deleted_at'):
+            return {
+                'success': False,
+                'message': 'Account deleted. Please sign up again.'
             }
         
         # Check if user is banned

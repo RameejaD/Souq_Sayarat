@@ -1,6 +1,7 @@
 from utils.db import execute_query
 from datetime import datetime
 import json
+
 class UserRepository:
     def create_user(self, first_name, last_name, email, date_of_birth, user_type,
                     is_dealer, company_name, owner_name, company_address, company_phone_number,
@@ -47,7 +48,7 @@ class UserRepository:
         """Get a user by phone number"""
         query = """
             SELECT id, first_name, last_name, email, date_of_birth, profile_image, whatsapp,
-                   location, user_type, is_verified, is_banned, ban_reason, created_at, updated_at
+                   location, user_type, is_verified, is_banned, ban_reason, created_at, updated_at, deleted_at
             FROM users
             WHERE phone_number = %s
         """
@@ -134,15 +135,6 @@ class UserRepository:
         """
         execute_query(query, (phone_number, user_id), fetch=False)
         return True
-
-    def update_user_phone_number(self, user_id, new_phone_number):
-        """Update user's phone number"""
-        query = """
-            UPDATE users
-            SET phone_number = %s
-            WHERE id = %s
-        """
-        execute_query(query, (new_phone_number, user_id), fetch=False)
 
     def save_otp(self, user_id, otp):
         """Save OTP for phone verification"""
@@ -540,47 +532,45 @@ class UserRepository:
         """
         return execute_query(query, (user_id,))
 
-    def get_pending_dealer_verifications(self, type='new'):
-        # Use is_verified = 'pending' for pending dealer verification, 'resubmission' for resubmissions
-        if type == 'new':
-            query = """
-                SELECT COUNT(*) as count FROM users WHERE user_type = 'dealer' AND is_verified = 'pending'
+    def soft_delete_user(self, user_id, deleted_at):
+        """Set deleted_at for a user (soft delete)"""
+        query = """
+            UPDATE users
+            SET deleted_at = %s
+            WHERE id = %s
+        """
+        execute_query(query, (deleted_at, user_id), fetch=False)
+
+    def save_delete_otp(self, user_id, otp):
+        """Save a 4-digit OTP for account deletion verification"""
+        query = """
+            INSERT INTO delete_account_otps (user_id, otp, created_at, used)
+            VALUES (%s, %s, NOW(), 0)
+        """
+        execute_query(query, (user_id, otp), fetch=False)
+
+    def verify_delete_otp(self, user_id, otp):
+        """Verify the OTP for account deletion (valid for 10 minutes, unused)"""
+        query = """
+            SELECT id FROM delete_account_otps
+            WHERE user_id = %s AND otp = %s AND used = 0 AND created_at >= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+            ORDER BY created_at DESC LIMIT 1
+        """
+        result = execute_query(query, (user_id, otp))
+        if result:
+            # Mark OTP as used
+            update_query = """
+                UPDATE delete_account_otps SET used = 1 WHERE id = %s
             """
-            result = execute_query(query)
-            return result[0]['count'] if result else 0
-        else:
-            query = """
-                SELECT COUNT(*) as count FROM users WHERE user_type = 'dealer' AND is_verified = 'resubmission'
-            """
-            result = execute_query(query)
-            return result[0]['count'] if result else 0
+            execute_query(update_query, (result[0]['id'],), fetch=False)
+            return True
+        return False
 
-    def get_user_incident_reports_list(self):
-        query = "SELECT id, report_user_reason FROM reported_reason"
-        return execute_query(query)
-
-    def save_phone_change_otp(self, request_id, phone_number, otp, expiry):
-        """Save OTP request"""
+    def report_user(self, reporter_user_id, reported_user_id, report_reason):
+        """Insert a new report row in reported_users table for every report"""
         query = """
-            INSERT INTO otp_requests (request_id, phone_number, otp, expiry, created_at)
-            VALUES (%s, %s, %s, %s, NOW())
+            INSERT INTO reported_users (reporter_user_id, reported_user_id, reported_reason)
+            VALUES (%s, %s, %s)
         """
-        execute_query(query, (request_id, phone_number, otp, expiry), fetch=False)
-
-    def get_phone_change_otp(self, request_id):
-        """Get OTP request by ID"""
-        query = """
-            SELECT request_id, phone_number, otp, expiry
-            FROM otp_requests
-            WHERE request_id = %s
-        """
-        result = execute_query(query, (request_id,))
-        return result[0] if result else None
-
-    def delete_phone_change_otp(self, request_id):
-        """Delete OTP request"""
-        query = """
-            DELETE FROM otp_requests
-            WHERE request_id = %s
-        """
-        execute_query(query, (request_id,), fetch=False)
+        execute_query(query, (reporter_user_id, reported_user_id, report_reason), fetch=False)
+        return True
