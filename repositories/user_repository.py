@@ -1,6 +1,7 @@
 from utils.db import execute_query
 from datetime import datetime
 import json
+
 class UserRepository:
     def create_user(self, first_name, last_name, email, date_of_birth, user_type,
                     is_dealer, company_name, owner_name, company_address, company_phone_number,
@@ -540,6 +541,49 @@ class UserRepository:
         """
         return execute_query(query, (user_id,))
 
+    def soft_delete_user(self, user_id, deleted_at):
+        """Set deleted_at for a user (soft delete)"""
+        query = """
+            UPDATE users
+            SET deleted_at = %s
+            WHERE id = %s
+        """
+        execute_query(query, (deleted_at, user_id), fetch=False)
+
+    def save_delete_otp(self, user_id, otp):
+        """Save a 4-digit OTP for account deletion verification"""
+        query = """
+            INSERT INTO delete_account_otps (user_id, otp, created_at, used)
+            VALUES (%s, %s, NOW(), 0)
+        """
+        execute_query(query, (user_id, otp), fetch=False)
+
+    def verify_delete_otp(self, user_id, otp):
+        """Verify the OTP for account deletion (valid for 10 minutes, unused)"""
+        query = """
+            SELECT id FROM delete_account_otps
+            WHERE user_id = %s AND otp = %s AND used = 0 AND created_at >= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+            ORDER BY created_at DESC LIMIT 1
+        """
+        result = execute_query(query, (user_id, otp))
+        if result:
+            # Mark OTP as used
+            update_query = """
+                UPDATE delete_account_otps SET used = 1 WHERE id = %s
+            """
+            execute_query(update_query, (result[0]['id'],), fetch=False)
+            return True
+        return False
+
+    def report_user(self, reporter_user_id, reported_user_id, report_reason):
+        """Insert a new report row in reported_users table for every report"""
+        query = """
+            INSERT INTO reported_users (reporter_user_id, reported_user_id, reported_reason)
+            VALUES (%s, %s, %s)
+        """
+        execute_query(query, (reporter_user_id, reported_user_id, report_reason), fetch=False)
+        return True
+
     def get_pending_dealer_verifications(self, type='new'):
         # Use is_verified = 'pending' for pending dealer verification, 'resubmission' for resubmissions
         if type == 'new':
@@ -584,3 +628,4 @@ class UserRepository:
             WHERE request_id = %s
         """
         execute_query(query, (request_id,), fetch=False)
+    

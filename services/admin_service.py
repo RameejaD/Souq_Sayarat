@@ -8,6 +8,7 @@ import hashlib
 import os
 import random
 import string
+from utils.auth import generate_token
 
 class AdminService:
     def __init__(self):
@@ -16,9 +17,9 @@ class AdminService:
         self.user_repository = UserRepository()
     
     def generate_admin_token(self):
-        """Generate a 256-bit token for admin sessions"""
-        # Generate 32 bytes (256 bits) of random data
-        random_bytes = secrets.token_bytes(32)
+        """Generate a 512-bit token for admin sessions"""
+        # Generate 64 bytes (512 bits) of random data for longer token
+        random_bytes = secrets.token_bytes(64)
         # Convert to hex string for storage
         token = random_bytes.hex()
         return token
@@ -601,6 +602,28 @@ class AdminService:
             'success': True,
             'status_code': 200
         }
+    def get_featured_cars(self, page=1, limit=10):
+        """Get featured car listings for admin"""
+        # Get featured cars with pagination
+        cars, total = self.car_repository.get_cars(
+            page=page,
+            limit=limit,
+            filters={'is_featured': True}
+        )
+        
+        # Calculate pagination info
+        total_pages = (total + limit - 1) // limit
+        
+        return {
+            'cars': cars,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'total_pages': total_pages
+            },
+            'status_code': 200
+        }
     
     def feature_car(self, car_id):
         """Feature a car listing"""
@@ -817,13 +840,17 @@ class AdminService:
             listings_pending_approval = self.get_listings_pending_approval()
             user_incident_reports = self.get_user_incident_reports()
             
+            # Get dealer verification statistics
+            dealer_verification_tasks = self.get_dealer_verification_tasks()
+            
             return {
                 'success': True,
                 'statistics': {
                     'cars_listed_this_week': cars_listed_this_week,
                     'cars_sold_this_week': cars_sold_this_week,
                     'listings_pending_approval': listings_pending_approval,
-                    'user_incident_reports': user_incident_reports
+                    'user_incident_reports': user_incident_reports,
+                    'dealer_verification_tasks': dealer_verification_tasks
                 },
                 'status_code': 200
             }
@@ -833,3 +860,25 @@ class AdminService:
                 'message': f'Error fetching dashboard statistics: {str(e)}',
                 'status_code': 500
             }
+    def search_users(self, search_query, page=1, limit=10):
+        """Search users by name, email, or phone number with pagination"""
+        try:
+            users, total = self.admin_repository.search_users(search_query, page, limit)
+            return users, total
+        except Exception as e:
+            print(f"Error in search_users service: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise e
+
+    def get_reported_users(self, page=1, limit=10):
+        return self.admin_repository.get_reported_users(page, limit)
+
+    def flag_reported_user(self, report_id):
+        return self.admin_repository.flag_reported_user(report_id)
+
+    def ban_reported_user(self, report_id, ban_reason):
+        return self.admin_repository.ban_reported_user(report_id, ban_reason)
+
+    def get_watchlist(self, page=1, limit=10):
+        return self.admin_repository.get_watchlist(page, limit)

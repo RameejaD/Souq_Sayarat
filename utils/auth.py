@@ -30,3 +30,32 @@ def token_required(f):
         return f(*args, **kwargs)
     
     return decorated
+
+def admin_token_required(f):
+    """Decorator to protect routes with admin JWT authentication"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try:
+            verify_jwt_in_request()
+            g.user_id = get_jwt_identity()
+            logger.debug(f"Token verified for user {g.user_id}")
+            
+            # Check if user is admin by checking the database directly
+            from database import get_connection
+            conn = get_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT id FROM admins WHERE id = %s", (g.user_id,))
+            admin = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if not admin:
+                return jsonify({'message': 'Admin access required'}), 403
+                
+        except Exception as e:
+            logger.error(f"Token verification failed: {str(e)}")
+            return jsonify({'message': str(e)}), 401
+        
+        return f(*args, **kwargs)
+    
+    return decorated

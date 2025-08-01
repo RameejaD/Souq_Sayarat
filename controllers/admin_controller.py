@@ -1,9 +1,13 @@
 from flask import Blueprint, request, jsonify, g
 from services.admin_service import AdminService
 from utils.auth import token_required
+from services.car_service import CarService
+from repositories.car_repository import CarRepository
 
 admin_bp = Blueprint('admin', __name__)
 admin_service = AdminService()
+car_service = CarService()
+car_repository = CarRepository()
 
 # Middleware to check if user is admin
 def admin_required(f):
@@ -65,9 +69,15 @@ def admin_login():
     )
     
     if result['success']:
+        admin = result['admin']
         response = {
             "access_token": result['session_token'],
-            "needs_password_update": result['admin']['needs_password_update'],
+            "needs_password_update": admin['needs_password_update'],
+            "is_super_admin": admin['is_super_admin'],
+            "is_subscription_transaction_manager": admin['is_subscription_transaction_manager'],
+            "is_listing_manager": admin['is_listing_manager'],
+            "is_user_manager": admin['is_user_manager'],
+            "is_support_manager": admin['is_support_manager'],
             "message": result.get('message', 'Login successful')
         }
         return jsonify(response), result['status_code']
@@ -76,9 +86,14 @@ def admin_login():
 
 # New endpoint: update password for sub admin when needs_password_update=1
 @admin_bp.route('/update-password-initial', methods=['PUT'])
-@admin_session_required
+@token_required
 def update_admin_password_initial():
-    """Update admin password for first login (when needs_password_update=1)"""
+    # Patch: set g.admin if not set
+    if not hasattr(g, 'admin') or g.admin is None:
+        admin = admin_service.admin_repository.get_admin_by_id(g.user_id)
+        if not admin:
+            return jsonify({"error": "Admin not found in context"}), 403
+        g.admin = admin
     data = request.json
     # Only require new_password
     if not data or 'new_password' not in data:
@@ -112,11 +127,105 @@ def admin_logout():
         return jsonify({"message": result['message']}), result['status_code']
     else:
         return jsonify({"error": result['message']}), result['status_code']
-
+@admin_bp.route('/reported-users', methods=['GET'])
+@admin_session_required
+def get_reported_users():
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+    result = admin_service.get_reported_users(page, limit)
+    return jsonify(result), 200
+@admin_bp.route('/reported-users/<int:report_id>/flag', methods=['PUT'])
+@admin_session_required
+def flag_reported_user(report_id):
+    success = admin_service.flag_reported_user(report_id)
+    if success:
+        return jsonify({'success': True, 'message': 'User flagged successfully'}), 200
+    else:
+        return jsonify({'success': False, 'message': 'Failed to flag user. Invalid report_id or database error.'}), 400
+@admin_bp.route('/search-users', methods=['POST'])
+@admin_session_required
+def search_users():
+    """Search users by name, email, or phone number (pagination via query params)"""
+    try:
+        # Check if admin is authenticated
+        if not hasattr(g, 'admin') or g.admin is None:
+            return jsonify({
+                'success': False,
+                'message': 'Admin authentication required'
+            }), 401
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'message': 'Request body is required',
+                'status_code': 400
+            }), 400
+        search_query = data.get('search_query', '').strip()
+        if not search_query:
+            return jsonify({
+                'success': False,
+                'message': 'Search query is required',
+                'status_code': 400
+            }), 400
+        # Get pagination from query params
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        if limit < 1 or limit > 50:
+            limit = 10
+        if page < 1:
+            page = 1
+        # Search users
+        users, total = admin_service.search_users(search_query, page, limit)
+        # Only return required fields
+        filtered_users = [
+            {
+                'id': u['id'],
+                'name': f"{u['first_name']} {u['last_name']}",
+                'email': u['email'],
+                'phone_number': u['phone_number'],
+                'user_type': u['user_type'],
+                'is_verified': u['is_verified']
+            }
+            for u in users
+        ]
+        return jsonify({
+            'success': True,
+            'message': 'Users found successfully',
+            'data': {
+                'users': filtered_users,
+                'total': total,
+                'page': page,
+                'limit': limit,
+                'search_query': search_query
+            },
+            'status_code': 200
+        }), 200
+    except Exception as e:
+        print(f"Error in search_users: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'An error occurred while searching users: {str(e)}',
+            'status_code': 500
+        }), 500
+@admin_bp.route('/watchlist', methods=['GET'])
+@admin_session_required
+def get_watchlist():
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+    result = admin_service.get_watchlist(page, limit)
+    return jsonify(result), 200
 @admin_bp.route('/profile', methods=['GET'])
 @admin_session_required
 def get_admin_profile():
-    """Get admin profile"""
+    # Patch: set g.admin if not set
+    if not hasattr(g, 'admin') or g.admin is None:
+        admin = admin_service.admin_repository.get_admin_by_id(g.user_id)
+        if not admin:
+            return jsonify({"error": "Admin not found"}), 404
+        g.admin = admin
     return jsonify({
         "admin": g.admin
     }), 200
@@ -145,17 +254,20 @@ def update_admin_password():
 
 # Admin Management Endpoints (Super Admin Only)
 @admin_bp.route('/admins', methods=['POST'])
-@super_admin_required
+@token_required
 def create_admin():
-    """Create a new admin (super admin only)"""
+    # Patch: set g.admin if not set
+    if not hasattr(g, 'admin') or g.admin is None:
+        admin = admin_service.admin_repository.get_admin_by_id(g.user_id)
+        if not admin:
+            return jsonify({"error": "Admin not found in context"}), 403
+        g.admin = admin
     data = request.json
-    
     # Validate required fields
     required_fields = ['email', 'password']
     for field in required_fields:
         if field not in data:
             return jsonify({"error": f"Missing required field: {field}"}), 400
-    
     # Validate permissions
     permissions = {
         'is_super_admin': data.get('is_super_admin', False),
@@ -164,7 +276,6 @@ def create_admin():
         'is_user_manager': data.get('is_user_manager', False),
         'is_support_manager': data.get('is_support_manager', False)
     }
-    
     # Create admin
     result = admin_service.create_admin(
         email=data['email'],
@@ -173,7 +284,6 @@ def create_admin():
         created_by_admin_id=g.admin['id'],
         request=request
     )
-    
     if result['success']:
         return jsonify({
             "message": "Admin created successfully",
@@ -449,6 +559,8 @@ def mark_best_pick(car_id, is_best_pick):
 
 
 
+
+
 @admin_bp.route('/contact/subjects', methods=['GET'])
 def get_subjects():
     """Get all subjects and contact information"""
@@ -559,7 +671,7 @@ def get_car_rejection_reasons():
     result = admin_service.get_car_rejection_reasons()
     return jsonify(result), 200
 @admin_bp.route('/featured-cars', methods=['GET'])
-@token_required
+@admin_session_required
 def get_admin_featured_cars():
     """Get featured car listings for admin"""
     # Get query parameters
@@ -568,3 +680,58 @@ def get_admin_featured_cars():
     # Get featured cars
     result = admin_service.get_featured_cars(page, limit)
     return jsonify(result), result['status_code']
+
+@admin_bp.route('/cars/deleted', methods=['GET'])
+@admin_session_required
+def get_deleted_cars():
+    """Get deleted car listings for admin audit"""
+    # Get query parameters
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+    
+    # Get deleted cars
+    result = car_service.get_deleted_cars_for_admin(page, limit)
+    
+    return jsonify({
+        'success': True,
+        'data': result
+    }), 200
+
+@admin_bp.route('/cars/best-picks', methods=['GET'])
+@admin_session_required
+def get_best_pick_cars():
+    """Get all best pick cars for admin"""
+    try:
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        
+        # Get best pick cars directly from repository
+        cars, total = car_repository.get_best_pick_cars(
+            user_id=None,  # Admin can see all cars
+            page=page,
+            limit=limit
+        )
+        
+        # Calculate pagination info
+        total_pages = (total + limit - 1) // limit
+        
+        result = {
+            'cars': cars,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'total_pages': total_pages
+            }
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500

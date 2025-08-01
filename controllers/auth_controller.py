@@ -16,7 +16,10 @@ def register():
     required_fields = ['first_name', 'last_name', 'email', 'date_of_birth', 'phone_number']
     for field in required_fields:
         if field not in data:
-            return jsonify({"error": f"Missing required field: {field}"}), 400
+            return jsonify({
+                "error": f"Missing required field: {field}",
+                "status_code": 400
+            }), 400
     
     # Register user
     result = auth_service.register_user(
@@ -44,10 +47,14 @@ def register():
         return jsonify({
             "message": "Registration successful",
             "token": result['token'],
-            "user": result['user']
+            "user": result['user'],
+            "status_code": 200
         }), 200
     else:
-        return jsonify({"error": result['message']}), 400
+        return jsonify({
+            "error": result['message'],
+            "status_code": 400
+        }), 400
 
 @auth_bp.route('/verify-otp', methods=['POST'])
 def verify_otp():
@@ -58,7 +65,10 @@ def verify_otp():
     required_fields = ['request_id', 'otp']
     for field in required_fields:
         if field not in data:
-            return jsonify({"error": f"Missing required field: {field}"}), 400
+            return jsonify({
+                "error": f"Missing required field: {field}",
+                "status_code": 400
+            }), 400
     
     # Verify OTP for login
     result = auth_service.verify_login_otp(
@@ -71,16 +81,21 @@ def verify_otp():
             return jsonify({
                 "message": "User is not registered. Please complete registration first.",
                 "is_registered": False,
-                "phone_number": result['phone_number']
+                "phone_number": result['phone_number'],
+                "status_code": 200
             }), 200
         return jsonify({
             "message": "Verification successful",
             "token": result['token'],
             "user": result['user'],
-            "is_registered": True
+            "is_registered": True,
+            "status_code": 200
         }), 200
     else:
-        return jsonify({"error": result['message']}), 400
+        return jsonify({
+            "error": result['message'],
+            "status_code": 400
+        }), 400
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -89,7 +104,10 @@ def login():
     
     # Validate required fields
     if 'phone_number' not in data:
-        return jsonify({"error": "Missing required field: phone_number"}), 400
+        return jsonify({
+            "error": "Missing required field: phone_number",
+            "status_code": 400
+        }), 400
     
     # Generate OTP (4 digits)
     otp = ''.join(random.choices(string.digits, k=4))
@@ -101,7 +119,42 @@ def login():
         return jsonify({
             "message": "OTP sent successfully",
             "request_id": result['request_id'],
-            "otp": otp  # Only for development, remove in production
+            "otp": otp,  # Only for development, remove in production
+            "status_code": 200
         }), 200
     else:
-        return jsonify({"error": result['message']}), 400
+        return jsonify({
+            "error": result['message'],
+            "status_code": 400
+        }), 400
+
+@auth_bp.route('/resend-otp', methods=['POST'])
+def resend_otp():
+    """Resend OTP for login"""
+    data = request.json
+    
+    # Validate required fields
+    if 'phone_number' not in data:
+        return jsonify({
+            "error": "Missing required field: phone_number",
+            "status_code": 400
+        }), 400
+    
+    # Generate new OTP (4 digits)
+    otp = ''.join(random.choices(string.digits, k=4))
+    
+    # Resend OTP for login
+    result = auth_service.resend_login_otp(data['phone_number'], otp)
+    
+    if result['success']:
+        return jsonify({
+            "message": "OTP resent successfully",
+            "request_id": result['request_id'],
+            "otp": otp,  # Only for development, remove in production
+            "status_code": 200
+        }), 200
+    else:
+        return jsonify({
+            "error": result['message'],
+            "status_code": 400
+        }), 400

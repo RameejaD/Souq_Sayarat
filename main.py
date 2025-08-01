@@ -68,7 +68,11 @@ message_service.init_socketio(socketio)
 
 @app.route('/')
 def health_check():
-    return jsonify({"status": "healthy", "message": "Souq Sayarat API is running"})
+    return jsonify({
+        "status": "healthy", 
+        "message": "Souq Sayarat API is running",
+        "status_code": 200
+    }), 200
 
 for rule in app.url_map.iter_rules():
     print(rule)

@@ -464,6 +464,9 @@ class CarRepository:
         # Add draft=0 condition
         where_clauses.append("c.draft = 0")
         
+        # Add soft delete filter - exclude deleted cars
+        where_clauses.append("c.deleted_at IS NULL")
+        
         # Add block filter if user_id is provided
         if user_id:
             where_clauses.append("""
@@ -502,6 +505,7 @@ class CarRepository:
             FROM cars c
             JOIN users u ON c.user_id = u.id
             {where_clause}
+            AND u.deleted_at IS NULL
             ORDER BY c.is_best_pick DESC, c.created_at DESC
             LIMIT %s OFFSET %s
         """
@@ -512,7 +516,9 @@ class CarRepository:
         count_query = f"""
             SELECT COUNT(*) as total
             FROM cars c
+            JOIN users u ON c.user_id = u.id
             {where_clause}
+            AND u.deleted_at IS NULL
         """
         count_result = execute_query(count_query, params[:-2] if params else [])
         total = count_result[0]['total'] if count_result else 0
@@ -603,6 +609,9 @@ class CarRepository:
             keyword = f"%{filters['keyword']}%"
             params.extend([keyword, keyword, keyword])
         
+        # Add soft delete filter - exclude deleted cars
+        where_clauses.append("c.deleted_at IS NULL")
+        
         # Construct final query
         where_clause = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         
@@ -659,7 +668,9 @@ class CarRepository:
                 CASE WHEN f.id IS NOT NULL THEN TRUE ELSE FALSE END as is_favorite
             FROM cars c
             LEFT JOIN favorites f ON c.id = f.car_id AND f.user_id = %s
+            JOIN users u ON c.user_id = u.id
             {where_clause}
+            AND u.deleted_at IS NULL
             ORDER BY {sort_by} {sort_order}
             LIMIT %s OFFSET %s
         """
@@ -729,9 +740,336 @@ class CarRepository:
         count_query = f"""
             SELECT COUNT(*) as total
             FROM cars c
+            JOIN users u ON c.user_id = u.id
             {where_clause}
+            AND u.deleted_at IS NULL
         """
         count_result = execute_query(count_query, params[1:-2] if params else [])  # Remove user_id and pagination params
+        total = count_result[0]['total'] if count_result else 0
+        
+        return cars, total
+    
+    def filter_cars(self, filters, user_id=None, page=1, limit=10):
+        """Filter cars with comprehensive filtering options"""
+        offset = (page - 1) * limit
+        
+        # Build WHERE clause
+        where_clauses = []
+        params = []
+        
+        # Always include approved cars only
+        where_clauses.append("c.approval = 'approved'")
+        where_clauses.append("c.deleted_at IS NULL")
+        
+        # Price range
+        if filters.get('price_min'):
+            where_clauses.append("c.price >= %s")
+            params.append(filters['price_min'])
+        if filters.get('price_max'):
+            where_clauses.append("c.price <= %s")
+            params.append(filters['price_max'])
+        
+        # Location/Region
+        if filters.get('location'):
+            if isinstance(filters['location'], list):
+                placeholders = ','.join(['%s'] * len(filters['location']))
+                where_clauses.append(f"c.location IN ({placeholders})")
+                params.extend(filters['location'])
+            else:
+                where_clauses.append("c.location = %s")
+                params.append(filters['location'])
+        
+        # Brand (Make)
+        if filters.get('make'):
+            if isinstance(filters['make'], list):
+                placeholders = ','.join(['%s'] * len(filters['make']))
+                where_clauses.append(f"c.make IN ({placeholders})")
+                params.extend(filters['make'])
+            else:
+                where_clauses.append("c.make = %s")
+                params.append(filters['make'])
+        
+        # Model
+        if filters.get('model'):
+            if isinstance(filters['model'], list):
+                placeholders = ','.join(['%s'] * len(filters['model']))
+                where_clauses.append(f"c.model IN ({placeholders})")
+                params.extend(filters['model'])
+            else:
+                where_clauses.append("c.model = %s")
+                params.append(filters['model'])
+        
+        # Version/Trim
+        if filters.get('trim'):
+            if isinstance(filters['trim'], list):
+                placeholders = ','.join(['%s'] * len(filters['trim']))
+                where_clauses.append(f"c.trim IN ({placeholders})")
+                params.extend(filters['trim'])
+            else:
+                where_clauses.append("c.trim = %s")
+                params.append(filters['trim'])
+        
+        # Body Type
+        if filters.get('body_type'):
+            if isinstance(filters['body_type'], list):
+                placeholders = ','.join(['%s'] * len(filters['body_type']))
+                where_clauses.append(f"c.body_type IN ({placeholders})")
+                params.extend(filters['body_type'])
+            else:
+                where_clauses.append("c.body_type = %s")
+                params.append(filters['body_type'])
+        
+        # Condition
+        if filters.get('condition'):
+            if isinstance(filters['condition'], list):
+                placeholders = ','.join(['%s'] * len(filters['condition']))
+                where_clauses.append(f"c.`condition` IN ({placeholders})")
+                params.extend(filters['condition'])
+            else:
+                where_clauses.append("c.`condition` = %s")
+                params.append(filters['condition'])
+        
+        # Mileage/Kilometers
+        if filters.get('mileage_min'):
+            where_clauses.append("c.kilometers >= %s")
+            params.append(filters['mileage_min'])
+        if filters.get('mileage_max'):
+            where_clauses.append("c.kilometers <= %s")
+            params.append(filters['mileage_max'])
+        
+        # Year
+        if filters.get('year_min'):
+            where_clauses.append("c.year >= %s")
+            params.append(filters['year_min'])
+        if filters.get('year_max'):
+            where_clauses.append("c.year <= %s")
+            params.append(filters['year_max'])
+        
+        # Fuel Type
+        if filters.get('fuel_type'):
+            if isinstance(filters['fuel_type'], list):
+                placeholders = ','.join(['%s'] * len(filters['fuel_type']))
+                where_clauses.append(f"c.fuel_type IN ({placeholders})")
+                params.extend(filters['fuel_type'])
+            else:
+                where_clauses.append("c.fuel_type = %s")
+                params.append(filters['fuel_type'])
+        
+        # Transmission
+        if filters.get('transmission'):
+            if isinstance(filters['transmission'], list):
+                placeholders = ','.join(['%s'] * len(filters['transmission']))
+                where_clauses.append(f"c.transmission_type IN ({placeholders})")
+                params.extend(filters['transmission'])
+            else:
+                where_clauses.append("c.transmission_type = %s")
+                params.append(filters['transmission'])
+        
+        # Number of Cylinders
+        if filters.get('cylinders'):
+            if isinstance(filters['cylinders'], list):
+                placeholders = ','.join(['%s'] * len(filters['cylinders']))
+                where_clauses.append(f"c.no_of_cylinders IN ({placeholders})")
+                params.extend(filters['cylinders'])
+            else:
+                where_clauses.append("c.no_of_cylinders = %s")
+                params.append(filters['cylinders'])
+        
+        # Power (HP) - using engine_cc as proxy
+        if filters.get('power_min'):
+            where_clauses.append("c.engine_cc >= %s")
+            params.append(filters['power_min'])
+        if filters.get('power_max'):
+            where_clauses.append("c.engine_cc <= %s")
+            params.append(filters['power_max'])
+        
+        # Consumption
+        if filters.get('consumption_min'):
+            where_clauses.append("c.consumption >= %s")
+            params.append(filters['consumption_min'])
+        if filters.get('consumption_max'):
+            where_clauses.append("c.consumption <= %s")
+            params.append(filters['consumption_max'])
+        
+        # Color
+        if filters.get('color'):
+            if isinstance(filters['color'], list):
+                placeholders = ','.join(['%s'] * len(filters['color']))
+                where_clauses.append(f"c.exterior_color IN ({placeholders})")
+                params.extend(filters['color'])
+            else:
+                where_clauses.append("c.exterior_color = %s")
+                params.append(filters['color'])
+        
+        # Number of Seats
+        if filters.get('seats_min'):
+            where_clauses.append("c.number_of_seats >= %s")
+            params.append(filters['seats_min'])
+        if filters.get('seats_max'):
+            where_clauses.append("c.number_of_seats <= %s")
+            params.append(filters['seats_max'])
+        
+        # Extra Features
+        if filters.get('extra_features'):
+            if isinstance(filters['extra_features'], list):
+                for feature in filters['extra_features']:
+                    where_clauses.append("c.extra_features LIKE %s")
+                    params.append(f"%{feature}%")
+            else:
+                where_clauses.append("c.extra_features LIKE %s")
+                params.append(f"%{filters['extra_features']}%")
+        
+        # Number of Doors
+        if filters.get('doors'):
+            if isinstance(filters['doors'], list):
+                placeholders = ','.join(['%s'] * len(filters['doors']))
+                where_clauses.append(f"c.number_of_doors IN ({placeholders})")
+                params.extend(filters['doors'])
+            else:
+                where_clauses.append("c.number_of_doors = %s")
+                params.append(filters['doors'])
+        
+        # Interior
+        if filters.get('interior'):
+            if isinstance(filters['interior'], list):
+                placeholders = ','.join(['%s'] * len(filters['interior']))
+                where_clauses.append(f"c.interior IN ({placeholders})")
+                params.extend(filters['interior'])
+            else:
+                where_clauses.append("c.interior = %s")
+                params.append(filters['interior'])
+        
+        # Air Conditioning (check in extra_features)
+        if filters.get('air_conditioning'):
+            where_clauses.append("c.extra_features LIKE %s")
+            params.append("%air conditioning%")
+        
+        # Verification Status
+        if filters.get('verified_only'):
+            where_clauses.append("u.is_verified = 1")
+        
+        # Construct final query
+        where_clause = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        
+        # Get sort options
+        sort_by = filters.get('sort_by', 'c.created_at')
+        sort_order = filters.get('sort_order', 'DESC')
+        
+        # Get cars with pagination
+        query = f"""
+            SELECT 
+                c.id,
+                c.user_id,
+                c.make,
+                c.model,
+                c.year,
+                c.price,
+                c.description,
+                c.exterior_color as color,
+                c.kilometers as mileage,
+                c.fuel_type,
+                c.transmission_type as transmission,
+                c.body_type,
+                c.`condition`,
+                c.location,
+                c.status,
+                c.is_featured,
+                c.created_at,
+                c.updated_at,
+                c.car_image,
+                c.trim,
+                c.regional_specs,
+                c.badges,
+                c.warranty_date,
+                c.accident_history,
+                c.number_of_seats,
+                c.number_of_doors,
+                c.drive_type,
+                c.engine_cc,
+                c.extra_features,
+                c.consumption,
+                c.no_of_cylinders,
+                c.views,
+                c.likes,
+                c.interior,
+                c.payment_option,
+                c.admin_rejection_comment,
+                c.deleted_at,
+                (SELECT image_url FROM car_images WHERE car_id = c.id LIMIT 1) AS image_url,
+                CASE WHEN f.id IS NOT NULL THEN TRUE ELSE FALSE END as is_favorite
+            FROM cars c
+            LEFT JOIN favorites f ON c.id = f.car_id AND f.user_id = %s
+            JOIN users u ON c.user_id = u.id
+            {where_clause}
+            AND u.deleted_at IS NULL
+            ORDER BY {sort_by} {sort_order}
+            LIMIT %s OFFSET %s
+        """
+        
+        # Add user_id and pagination parameters
+        all_params = [user_id or 0] + params + [limit, offset]
+        
+        cars = execute_query(query, all_params)
+        
+        # Format image URLs and standardize fields
+        for car in cars:
+            # Format car_image if it exists
+            if car.get('car_image'):
+                filename = car['car_image'].split('/')[-1]
+                car['car_image'] = f"/static/uploads/{filename}"
+            
+            # Format image_url if it exists
+            if car.get('image_url'):
+                filename = car['image_url'].split('/')[-1]
+                car['image_url'] = f"/static/uploads/{filename}"
+            
+            # Convert is_featured to featured integer (0 or 1)
+            car['featured'] = 1 if car.pop('is_featured', 0) else 0
+            
+            # Convert is_favorite to proper boolean
+            car['is_favorite'] = bool(car.get('is_favorite', 0))
+            
+            # Ensure all fields are present with default values if missing
+            car.setdefault('id', '')
+            car.setdefault('user_id', '')
+            car.setdefault('make', '')
+            car.setdefault('model', '')
+            car.setdefault('year', '')
+            car.setdefault('price', 0)
+            car.setdefault('description', '')
+            car.setdefault('color', '')
+            car.setdefault('mileage', 0)
+            car.setdefault('fuel_type', '')
+            car.setdefault('transmission', '')
+            car.setdefault('body_type', '')
+            car.setdefault('condition', '')
+            car.setdefault('location', '')
+            car.setdefault('status', '')
+            car.setdefault('created_at', '')
+            car.setdefault('updated_at', '')
+            car.setdefault('car_image', '')
+            car.setdefault('image_url', '')
+            car.setdefault('trim', '')
+            car.setdefault('regional_specs', '')
+            car.setdefault('badges', '')
+            car.setdefault('warranty_date', '')
+            car.setdefault('accident_history', '')
+            car.setdefault('number_of_seats', '')
+            car.setdefault('number_of_doors', '')
+            car.setdefault('drive_type', '')
+            car.setdefault('engine_cc', '')
+            car.setdefault('extra_features', '')
+            car.setdefault('is_favorite', False)
+        
+        # Get total count
+        count_query = f"""
+            SELECT COUNT(*) as total
+            FROM cars c
+            JOIN users u ON c.user_id = u.id
+            {where_clause}
+            AND u.deleted_at IS NULL
+        """
+        count_result = execute_query(count_query, params)
         total = count_result[0]['total'] if count_result else 0
         
         return cars, total
@@ -779,7 +1117,7 @@ class CarRepository:
                 CASE WHEN f.id IS NOT NULL THEN TRUE ELSE FALSE END as is_favorite
             FROM cars c
             LEFT JOIN favorites f ON c.id = f.car_id AND f.user_id = %s
-            WHERE c.is_featured = 1 AND c.approval = 'approved'
+            WHERE c.is_featured = 1 AND c.approval = 'approved' AND c.deleted_at IS NULL
             ORDER BY c.created_at DESC
         """
         cars = execute_query(query, (user_id,))
@@ -838,6 +1176,154 @@ class CarRepository:
             car.setdefault('is_favorite', False)
                 
         return cars
+    
+    def get_featured_cars_with_pagination(self, page=1, limit=10, user_id=None):
+        """Get featured car listings with pagination"""
+        offset = (page - 1) * limit
+        
+        # Get user_id for favorite check
+        if not user_id:
+            user_id = 0  # Use 0 for non-authenticated users
+            
+        print(f"get_featured_cars_with_pagination - user_id: {user_id}, type: {type(user_id)}")
+        
+        # Build WHERE clause
+        where_clauses = []
+        params = []
+        
+        # Add featured condition
+        where_clauses.append("c.is_featured = 1")
+        where_clauses.append("c.approval = 'approved'")
+        where_clauses.append("c.deleted_at IS NULL")
+        
+        # Add block filter if user_id is provided
+        if user_id and user_id != 0:
+            where_clauses.append("""
+                c.user_id NOT IN (
+                    SELECT blocked_id 
+                    FROM user_blocks 
+                    WHERE blocker_id = %s
+                )
+                AND c.user_id NOT IN (
+                    SELECT blocker_id 
+                    FROM user_blocks 
+                    WHERE blocked_id = %s
+                )
+            """)
+            params.extend([user_id, user_id])
+        
+        # Construct final query
+        where_clause = f"WHERE {' AND '.join(where_clauses)}"
+        
+        # Get featured cars with pagination
+        query = f"""
+            SELECT 
+                c.id,
+                c.user_id,
+                c.make,
+                c.model,
+                c.year,
+                c.price,
+                c.description,
+                c.exterior_color as color,
+                c.kilometers as mileage,
+                c.fuel_type,
+                c.transmission_type as transmission,
+                c.body_type,
+                c.`condition`,
+                c.location,
+                c.status,
+                c.is_featured,
+                c.created_at,
+                c.updated_at,
+                c.car_image,
+                c.trim,
+                c.regional_specs,
+                c.badges,
+                c.warranty_date,
+                c.accident_history,
+                c.number_of_seats,
+                c.number_of_doors,
+                c.drive_type,
+                c.engine_cc,
+                c.extra_features,
+                (SELECT image_url FROM car_images WHERE car_id = c.id LIMIT 1) AS image_url,
+                CASE WHEN f.id IS NOT NULL THEN TRUE ELSE FALSE END as is_favorite
+            FROM cars c
+            LEFT JOIN favorites f ON c.id = f.car_id AND f.user_id = %s
+            {where_clause}
+            ORDER BY c.created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        
+        # Add user_id and pagination parameters
+        all_params = [user_id] + params + [limit, offset]
+        
+        cars = execute_query(query, all_params)
+        
+        # Format image URLs and standardize fields
+        for car in cars:
+            # Format car_image if it exists
+            if car.get('car_image'):
+                filename = car['car_image'].split('/')[-1]
+                car['car_image'] = f"/static/uploads/{filename}"
+            
+            # Format image_url if it exists
+            if car.get('image_url'):
+                filename = car['image_url'].split('/')[-1]
+                car['image_url'] = f"/static/uploads/{filename}"
+            
+            # Convert is_featured to featured integer (0 or 1)
+            car['featured'] = 1 if car.pop('is_featured', 0) else 0
+            
+            # Convert is_favorite to proper boolean
+            car['is_favorite'] = bool(car.get('is_favorite', 0))
+            
+            # Add recommended flag
+            car['recommended'] = False
+            
+            # Ensure all fields are present with default values if missing
+            car.setdefault('id', '')
+            car.setdefault('user_id', '')
+            car.setdefault('make', '')
+            car.setdefault('model', '')
+            car.setdefault('year', '')
+            car.setdefault('price', 0)
+            car.setdefault('description', '')
+            car.setdefault('color', '')
+            car.setdefault('mileage', 0)
+            car.setdefault('fuel_type', '')
+            car.setdefault('transmission', '')
+            car.setdefault('body_type', '')
+            car.setdefault('condition', '')
+            car.setdefault('location', '')
+            car.setdefault('status', '')
+            car.setdefault('created_at', '')
+            car.setdefault('updated_at', '')
+            car.setdefault('car_image', '')
+            car.setdefault('image_url', '')
+            car.setdefault('trim', '')
+            car.setdefault('regional_specs', '')
+            car.setdefault('badges', '')
+            car.setdefault('warranty_date', '')
+            car.setdefault('accident_history', '')
+            car.setdefault('number_of_seats', '')
+            car.setdefault('number_of_doors', '')
+            car.setdefault('drive_type', '')
+            car.setdefault('engine_cc', '')
+            car.setdefault('extra_features', '')
+            car.setdefault('is_favorite', False)
+        
+        # Get total count
+        count_query = f"""
+            SELECT COUNT(*) as total
+            FROM cars c
+            {where_clause}
+        """
+        count_result = execute_query(count_query, params)
+        total = count_result[0]['total'] if count_result else 0
+        
+        return cars, total
     
     def get_similar_cars(self, make, model, car_id, limit=5):
         """Get similar cars based on make and model"""
@@ -922,7 +1408,7 @@ class CarRepository:
         if not where_clauses:
             return self.get_featured_cars()
         
-        where_clause = f"WHERE ({' OR '.join(where_clauses)}) AND c.approval = 'approved'"
+        where_clause = f"WHERE ({' OR '.join(where_clauses)}) AND c.approval = 'approved' AND c.deleted_at IS NULL"
         
         query = f"""
             SELECT c.id, c.user_id, c.make, c.model, c.year, c.price, c.description, c.exterior_color as color,
@@ -993,7 +1479,7 @@ class CarRepository:
         query = """
             SELECT COUNT(*) as total
             FROM cars
-            WHERE user_id = %s
+            WHERE user_id = %s AND deleted_at IS NULL
         """
         result = execute_query(query, (user_id,))
         return result[0]['total'] if result else 0
@@ -1003,7 +1489,7 @@ class CarRepository:
         query = """
             SELECT COUNT(*) as count
             FROM cars
-            WHERE user_id = %s AND status = 'active'
+            WHERE user_id = %s AND status = 'unsold' AND approval = 'approved' AND deleted_at IS NULL
         """
         results = execute_query(query, (user_id,))
         return results[0]['count'] if results else 0
@@ -1124,13 +1610,14 @@ class CarRepository:
             query = """
                 SELECT COUNT(*) as total
                 FROM cars
-                WHERE status = %s
+                WHERE status = %s AND deleted_at IS NULL
             """
             result = execute_query(query, (status,))
         else:
             query = """
                 SELECT COUNT(*) as total
                 FROM cars
+                WHERE deleted_at IS NULL
             """
             result = execute_query(query)
         
@@ -1141,6 +1628,7 @@ class CarRepository:
         query = """
             SELECT id, make, model, year, price, status, created_at
             FROM cars
+            WHERE deleted_at IS NULL
             ORDER BY created_at DESC
             LIMIT %s
         """
@@ -1536,6 +2024,7 @@ class CarRepository:
             AND c.status = 'unsold'
             AND c.approval = 'approved'
             AND c.draft = 0
+            AND c.deleted_at IS NULL
             ORDER BY c.created_at DESC
         """
 
@@ -1548,6 +2037,7 @@ class CarRepository:
             AND c.status = 'unsold'
             AND c.approval = 'pending'
             AND c.draft = 0
+            AND c.deleted_at IS NULL
             ORDER BY c.created_at DESC
         """
 
@@ -1559,6 +2049,7 @@ class CarRepository:
             WHERE c.user_id = %s 
             AND c.status = 'sold'
             AND c.draft = 0
+            AND c.deleted_at IS NULL
             ORDER BY c.created_at DESC
         """
 
@@ -1570,6 +2061,7 @@ class CarRepository:
             FROM cars c
             WHERE c.user_id = %s 
             AND c.draft = 1
+            AND c.deleted_at IS NULL
             ORDER BY c.created_at DESC
         """
 
@@ -1694,23 +2186,42 @@ class CarRepository:
             WHERE id = %s
         """
         execute_query(query, (car_id,), fetch=False)
+    def get_user_listing_stats(self, user_id):
+        """Get listing stats for a user: total, active, sold, rejected, pending (custom logic)"""
+        # Total listings
+        total = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND deleted_at IS NULL", (user_id,))[0]['cnt']
+        # Active listings: status='unsold' and approval='approved'
+        active = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND status = 'unsold' AND approval = 'approved' AND deleted_at IS NULL", (user_id,))[0]['cnt']
+        # Sold listings: status='sold' and approval='approved'
+        sold = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND status = 'sold' AND approval = 'approved' AND deleted_at IS NULL", (user_id,))[0]['cnt']
+        # Rejected listings: status='unsold' and approval='rejected'
+        rejected = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND status = 'unsold' AND approval = 'rejected' AND deleted_at IS NULL", (user_id,))[0]['cnt']
+        # Pending listings: status='unsold' and approval='pending'
+        pending = execute_query("SELECT COUNT(*) as cnt FROM cars WHERE user_id = %s AND status = 'unsold' AND approval = 'pending' AND deleted_at IS NULL", (user_id,))[0]['cnt']
+        return {
+            "total": total,
+            "active": active,
+            "sold": sold,
+            "rejected": rejected,
+            "pending": pending
+        }
 
     def get_cars_listed_since(self, since_datetime):
         query = """
-            SELECT * FROM cars WHERE created_at >= %s
+            SELECT * FROM cars WHERE created_at >= %s AND deleted_at IS NULL
         """
         return execute_query(query, (since_datetime,))
 
     def get_cars_sold_since(self, since_datetime):
         query = """
-            SELECT COUNT(*) as count FROM cars WHERE status = 'sold' AND updated_at >= %s
+            SELECT COUNT(*) as count FROM cars WHERE status = 'sold' AND updated_at >= %s AND deleted_at IS NULL
         """
         result = execute_query(query, (since_datetime,))
         return result[0]['count'] if result else 0
 
     def get_pending_approval_count(self):
         query = """
-            SELECT COUNT(*) as count FROM cars WHERE approval = 'pending'
+            SELECT COUNT(*) as count FROM cars WHERE approval = 'pending' AND deleted_at IS NULL
         """
         result = execute_query(query)
         return result[0]['count'] if result else 0
@@ -1724,3 +2235,30 @@ class CarRepository:
         query = "UPDATE cars SET is_best_pick = 0, updated_at = NOW() WHERE id = %s"
         execute_query(query, (car_id,), fetch=False)
         return True
+
+    def get_deleted_cars_for_admin(self, page=1, limit=10):
+        """Get deleted cars for admin audit purposes"""
+        offset = (page - 1) * limit
+        
+        query = """
+            SELECT c.*, u.first_name, u.last_name, u.email, u.phone_number
+            FROM cars c
+            JOIN users u ON c.user_id = u.id
+            WHERE c.deleted_at IS NOT NULL
+            ORDER BY c.deleted_at DESC
+            LIMIT %s OFFSET %s
+        """
+        cars = execute_query(query, (limit, offset))
+        
+        # Get total count
+        count_query = """
+            SELECT COUNT(*) as total
+            FROM cars c
+            WHERE c.deleted_at IS NOT NULL
+        """
+        count_result = execute_query(count_query)
+        total = count_result[0]['total'] if count_result else 0
+        
+        return cars, total
+
+

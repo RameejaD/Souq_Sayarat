@@ -82,6 +82,26 @@ class AuthService:
             'request_id': request_id
         }
     
+    def resend_login_otp(self, phone_number, otp):
+        """Resend OTP for login"""
+        # Create new OTP request
+        request_id = str(uuid.uuid4())
+        expiry = datetime.now() + timedelta(minutes=5)
+        
+        # Delete any existing OTP requests for this phone number
+        self.auth_repository.delete_otp_requests_by_phone(phone_number)
+        
+        # Save new OTP request
+        self.auth_repository.save_otp_request(request_id, phone_number, otp, expiry)
+        
+        # Send OTP via SMS
+        send_otp(phone_number, otp)
+        
+        return {
+            'success': True,
+            'request_id': request_id
+        }
+    
     def verify_login_otp(self, request_id, otp):
         """Verify OTP for login"""
         # Get OTP request
@@ -111,6 +131,15 @@ class AuthService:
         user = self.user_repository.get_user_by_phone(otp_request['phone_number'])
         
         if not user:
+            return {
+                'success': True,
+                'message': 'User is not registered. Please complete registration first.',
+                'is_registered': False,
+                'phone_number': otp_request['phone_number']
+            }
+        
+        # Check if user is deleted (soft deleted)
+        if user.get('deleted_at'):
             return {
                 'success': True,
                 'message': 'User is not registered. Please complete registration first.',

@@ -26,3 +26,11 @@ class AuthRepository:
             WHERE request_id = %s
         """
         execute_query(query, (request_id,), fetch=False)
+    
+    def delete_otp_requests_by_phone(self, phone_number):
+        """Delete all OTP requests for a phone number"""
+        query = """
+            DELETE FROM otp_requests
+            WHERE phone_number = %s
+        """
+        execute_query(query, (phone_number,), fetch=False)

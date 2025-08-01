@@ -981,3 +981,160 @@ def upload_cars_xlsx():
 
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@car_bp.route('/featured', methods=['GET'])
+@jwt_required(optional=True)  # Make JWT optional but still verify if present
+def get_featured_cars():
+    """Get featured cars with pagination"""
+    try:
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        
+        # Get user ID from JWT token if available
+        user_id = get_jwt_identity()
+        print(f"get_featured_cars - user_id from token: {user_id}")  # Debug print
+        
+        # Get featured cars
+        result = car_service.get_featured_cars_with_pagination(
+            page=page,
+            limit=limit,
+            user_id=user_id
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@car_bp.route('/filter', methods=['GET'])
+def filter_cars():
+    """Filter cars with comprehensive filtering options using query parameters"""
+    try:
+        # Get pagination parameters
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 20, type=int)
+        
+        # Extract filter parameters from query string
+        filters = {
+            # Price Range
+            'price_min': request.args.get('price_min', type=int),
+            'price_max': request.args.get('price_max', type=int),
+            
+            # Region/Location
+            'regions': request.args.getlist('regions'),
+            
+            # Brand and Model
+            'brands': request.args.getlist('brands'),
+            'models': request.args.getlist('models'),
+            
+            # Version/Trim
+            'versions': request.args.getlist('versions'),
+            
+            # Body Type
+            'body_types': request.args.getlist('body_types'),
+            
+            # Verification Status
+            'verified_only': request.args.get('verified_only', type=bool),
+            
+            # Condition
+            'conditions': request.args.getlist('conditions'),
+            
+            # Kilometers/Mileage
+            'mileage_min': request.args.get('mileage_min', type=int),
+            'mileage_max': request.args.get('mileage_max', type=int),
+            
+            # Year
+            'year_min': request.args.get('year_min', type=int),
+            'year_max': request.args.get('year_max', type=int),
+            
+            # Fuel Type
+            'fuel_types': request.args.getlist('fuel_types'),
+            
+            # Transmission
+            'transmissions': request.args.getlist('transmissions'),
+            
+            # Number of Cylinders
+            'cylinders': request.args.getlist('cylinders'),
+            
+            # Power (HP)
+            'power_min': request.args.get('power_min', type=int),
+            'power_max': request.args.get('power_max', type=int),
+            
+            # Consumption
+            'consumption_min': request.args.get('consumption_min', type=float),
+            'consumption_max': request.args.get('consumption_max', type=float),
+            
+            # Exterior Color
+            'colors': request.args.getlist('colors'),
+            
+            # Number of Seats
+            'seats_min': request.args.get('seats_min', type=int),
+            'seats_max': request.args.get('seats_max', type=int),
+            
+            # Extra Features
+            'extra_features': request.args.getlist('extra_features'),
+            
+            # Number of Doors
+            'doors': request.args.getlist('doors'),
+            
+            # Interior
+            'interiors': request.args.getlist('interiors'),
+            
+            # Air Conditioning
+            'air_conditioning': request.args.get('air_conditioning', type=bool),
+            
+            # Sort options
+            'sort_by': request.args.get('sort_by', 'created_at'),
+            'sort_order': request.args.get('sort_order', 'desc')
+        }
+        
+        # Get user_id for favorites if authenticated
+        user_id = None
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            try:
+                from utils.auth import token_required
+                from flask import g
+                # Extract user_id from token
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                from flask_jwt_extended import decode_token
+                decoded = decode_token(token)
+                user_id = decoded['sub']
+            except:
+                pass  # Continue without user_id if token is invalid
+        
+        # Filter cars
+        cars, total = car_service.filter_cars(filters, user_id, page, limit)
+        
+        # Calculate pagination info
+        total_pages = (total + limit - 1) // limit
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cars filtered successfully',
+            'data': {
+                'cars': cars,
+                'total': total,
+                'page': page,
+                'limit': limit,
+                'total_pages': total_pages,
+                'filters_applied': filters
+            },
+            'status_code': 200
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in filter_cars: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'An error occurred while filtering cars: {str(e)}',
+            'status_code': 500
+        }), 500

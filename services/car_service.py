@@ -12,49 +12,126 @@ class CarService:
         # Update all car image paths to use uploads directory
         self.car_repository.update_car_image_paths()
     
-    def get_cars(self, page=1, limit=10, make=None, model=None, year_from=None, year_to=None, price_from=None, price_to=None, status=None, is_featured=None, user_id=None):
-        """Get all cars with pagination and filtering"""
-        # Build filter conditions
-        filters = {}
-        if make:
-            filters['make'] = make
-        if model:
-            filters['model'] = model
-        if year_from:
-            filters['year_from'] = year_from
-        if year_to:
-            filters['year_to'] = year_to
-        if price_from:
-            filters['price_from'] = price_from
-        if price_to:
-            filters['price_to'] = price_to
-        if status:
-            filters['status'] = status
-        if is_featured is not None:
-            filters['is_featured'] = is_featured
-        if user_id:
-            filters['user_id'] = user_id
-            print(f"get_cars service - user_id: {user_id}, type: {type(user_id)}")  # Debug print
-        
-        # Get cars with pagination
-        cars, total = self.car_repository.get_cars(
-            page=page,
-            limit=limit,
-            filters=filters
-        )
-        
-        # Calculate pagination info
-        total_pages = (total + limit - 1) // limit
-        
-        return {
-            'cars': cars,
-            'pagination': {
-                'page': page,
-                'limit': limit,
-                'total': total,
-                'total_pages': total_pages
-            }
-        }
+    def get_cars(self, page=1, limit=10, filters=None, user_id=None):
+        """Get cars with pagination and filtering"""
+        return self.car_repository.get_cars(page, limit, filters, user_id)
+    
+    def filter_cars(self, filters, user_id=None, page=1, limit=10):
+        """Filter cars with comprehensive filtering options"""
+        try:
+            # Convert filters to repository format
+            repo_filters = {}
+            
+            # Price range
+            if filters.get('price_min'):
+                repo_filters['price_min'] = filters['price_min']
+            if filters.get('price_max'):
+                repo_filters['price_max'] = filters['price_max']
+            
+            # Location/Region
+            if filters.get('regions'):
+                repo_filters['location'] = filters['regions']
+            
+            # Brand and Model
+            if filters.get('brands'):
+                repo_filters['make'] = filters['brands']
+            if filters.get('models'):
+                repo_filters['model'] = filters['models']
+            
+            # Version/Trim
+            if filters.get('versions'):
+                repo_filters['trim'] = filters['versions']
+            
+            # Body Type
+            if filters.get('body_types'):
+                repo_filters['body_type'] = filters['body_types']
+            
+            # Condition
+            if filters.get('conditions'):
+                repo_filters['condition'] = filters['conditions']
+            
+            # Mileage/Kilometers
+            if filters.get('mileage_min'):
+                repo_filters['mileage_min'] = filters['mileage_min']
+            if filters.get('mileage_max'):
+                repo_filters['mileage_max'] = filters['mileage_max']
+            
+            # Year
+            if filters.get('year_min'):
+                repo_filters['year_min'] = filters['year_min']
+            if filters.get('year_max'):
+                repo_filters['year_max'] = filters['year_max']
+            
+            # Fuel Type
+            if filters.get('fuel_types'):
+                repo_filters['fuel_type'] = filters['fuel_types']
+            
+            # Transmission
+            if filters.get('transmissions'):
+                repo_filters['transmission'] = filters['transmissions']
+            
+            # Number of Cylinders
+            if filters.get('cylinders'):
+                repo_filters['cylinders'] = filters['cylinders']
+            
+            # Power (HP)
+            if filters.get('power_min'):
+                repo_filters['power_min'] = filters['power_min']
+            if filters.get('power_max'):
+                repo_filters['power_max'] = filters['power_max']
+            
+            # Consumption
+            if filters.get('consumption_min'):
+                repo_filters['consumption_min'] = filters['consumption_min']
+            if filters.get('consumption_max'):
+                repo_filters['consumption_max'] = filters['consumption_max']
+            
+            # Color
+            if filters.get('colors'):
+                repo_filters['color'] = filters['colors']
+            
+            # Number of Seats
+            if filters.get('seats_min'):
+                repo_filters['seats_min'] = filters['seats_min']
+            if filters.get('seats_max'):
+                repo_filters['seats_max'] = filters['seats_max']
+            
+            # Extra Features
+            if filters.get('extra_features'):
+                repo_filters['extra_features'] = filters['extra_features']
+            
+            # Number of Doors
+            if filters.get('doors'):
+                repo_filters['doors'] = filters['doors']
+            
+            # Interior
+            if filters.get('interiors'):
+                repo_filters['interior'] = filters['interiors']
+            
+            # Air Conditioning
+            if filters.get('air_conditioning'):
+                repo_filters['air_conditioning'] = filters['air_conditioning']
+            
+            # Verification Status
+            if filters.get('verified_only'):
+                repo_filters['verified_only'] = True
+            
+            # Sort options
+            if filters.get('sort_by'):
+                repo_filters['sort_by'] = filters['sort_by']
+            if filters.get('sort_order'):
+                repo_filters['sort_order'] = filters['sort_order']
+            
+            # Call repository method
+            cars, total = self.car_repository.filter_cars(repo_filters, user_id, page, limit)
+            
+            return cars, total
+            
+        except Exception as e:
+            print(f"Error in filter_cars service: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise e
     
     def get_car_by_id(self, car_id):
         """Get a car by ID"""
@@ -626,13 +703,13 @@ class CarService:
             },
             'status_code': 200
         }
-    def get_featured_cars(self, page=1, limit=10):
-        """Get featured car listings for admin"""
+    def get_featured_cars_with_pagination(self, page=1, limit=10, user_id=None):
+        """Get featured car listings with pagination"""
         # Get featured cars with pagination
-        cars, total = self.car_repository.get_cars(
+        cars, total = self.car_repository.get_featured_cars_with_pagination(
             page=page,
             limit=limit,
-            filters={'is_featured': True}
+            user_id=user_id
         )
         
         # Calculate pagination info
@@ -645,6 +722,25 @@ class CarService:
                 'limit': limit,
                 'total': total,
                 'total_pages': total_pages
-            },
-            'status_code': 200
+            }
         }
+
+    def get_deleted_cars_for_admin(self, page=1, limit=10):
+        """Get deleted cars for admin audit purposes"""
+        cars, total = self.car_repository.get_deleted_cars_for_admin(page, limit)
+        
+        # Calculate pagination info
+        total_pages = (total + limit - 1) // limit
+        
+        return {
+            'cars': cars,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'total_pages': total_pages
+            }
+        }
+
+
+
